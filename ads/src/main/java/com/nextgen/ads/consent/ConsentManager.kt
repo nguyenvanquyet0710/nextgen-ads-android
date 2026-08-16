@@ -58,34 +58,57 @@ class ConsentManager private constructor(context: Context) {
     activity: Activity,
     testDeviceId: String? = null,
     isDebugGeographyEEA: Boolean = false,
+    timeoutMs: Long = 3500L,
     onConsentGatheringComplete: (FormError?) -> Unit,
   ) {
-    val debugSettingsBuilder = ConsentDebugSettings.Builder(activity)
-    if (!testDeviceId.isNullOrEmpty()) {
-      debugSettingsBuilder.addTestDeviceHashedId(testDeviceId)
+    val isCompleted = java.util.concurrent.atomic.AtomicBoolean(false)
+    val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    val timeoutRunnable = Runnable {
+      if (!isCompleted.getAndSet(true)) {
+        NextGenAds.log("Consent gathering timeout ($timeoutMs ms). Proceeding.")
+        NextGenAds.runOnMainThread { onConsentGatheringComplete(null) }
+      }
     }
-    if (isDebugGeographyEEA) {
-      debugSettingsBuilder.setDebugGeography(ConsentDebugSettings.DebugGeography.DEBUG_GEOGRAPHY_EEA)
+    handler.postDelayed(timeoutRunnable, timeoutMs)
+
+    fun finishConsent(error: FormError?) {
+      handler.removeCallbacks(timeoutRunnable)
+      if (!isCompleted.getAndSet(true)) {
+        NextGenAds.runOnMainThread { onConsentGatheringComplete(error) }
+      }
     }
 
-    val params = ConsentRequestParameters.Builder()
-      .setConsentDebugSettings(debugSettingsBuilder.build())
-      .build()
+    try {
+      val debugSettingsBuilder = ConsentDebugSettings.Builder(activity)
+      if (!testDeviceId.isNullOrEmpty()) {
+        debugSettingsBuilder.addTestDeviceHashedId(testDeviceId)
+      }
+      if (isDebugGeographyEEA) {
+        debugSettingsBuilder.setDebugGeography(ConsentDebugSettings.DebugGeography.DEBUG_GEOGRAPHY_EEA)
+      }
 
-    consentInformation.requestConsentInfoUpdate(
-      activity,
-      params,
-      {
-        UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity) { formError ->
-          NextGenAds.log("Consent form dismissed or completed. FormError: $formError")
-          NextGenAds.runOnMainThread { onConsentGatheringComplete(formError) }
-        }
-      },
-      { requestConsentError ->
-        NextGenAds.logError("Error requesting consent info update: ${requestConsentError.message}")
-        NextGenAds.runOnMainThread { onConsentGatheringComplete(requestConsentError) }
-      },
-    )
+      val params = ConsentRequestParameters.Builder()
+        .setConsentDebugSettings(debugSettingsBuilder.build())
+        .build()
+
+      consentInformation.requestConsentInfoUpdate(
+        activity,
+        params,
+        {
+          UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity) { formError ->
+            NextGenAds.log("Consent form dismissed or completed. FormError: $formError")
+            finishConsent(formError)
+          }
+        },
+        { requestConsentError ->
+          NextGenAds.logError("Error requesting consent info update: ${requestConsentError.message}")
+          finishConsent(requestConsentError)
+        },
+      )
+    } catch (e: Exception) {
+      NextGenAds.logError("Error in gatherConsent: ${e.message}", e)
+      finishConsent(null)
+    }
   }
 
   /**

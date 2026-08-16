@@ -38,8 +38,25 @@ object NextGenAds {
   const val SAMPLE_APP_ID = "ca-app-pub-3940256099942544~3347511713"
 
   private val isInitializedFlag = AtomicBoolean(false)
+  private val isInitializingFlag = AtomicBoolean(false)
+  private var cachedInitStatus: InitializationStatus? = null
+  private val initCallbacks = mutableListOf<(InitializationStatus) -> Unit>()
+
   var isDebug: Boolean = false
+
   var isFullScreenAdShowing: Boolean = false
+    internal set(value) {
+      if (field != value) {
+        field = value
+        runOnMainThread { onAdVisibilityChanged?.invoke(value) }
+      }
+    }
+
+  /**
+   * Global listener invoked whenever ANY full-screen ad (AppOpen, Interstitial, Rewarded) opens or closes.
+   * Perfect for pausing/resuming game background music and sound effects in 1 single place.
+   */
+  var onAdVisibilityChanged: ((isShowing: Boolean) -> Unit)? = null
 
   val isInitialized: Boolean
     get() = isInitializedFlag.get()
@@ -60,8 +77,22 @@ object NextGenAds {
     ageRestrictedTreatment: AgeRestrictedTreatment? = null,
     onComplete: ((InitializationStatus) -> Unit)? = null,
   ) {
-    if (isInitializedFlag.getAndSet(true)) {
+    if (isInitializedFlag.get()) {
       log("NextGenAds is already initialized.")
+      cachedInitStatus?.let { status ->
+        runOnMainThread { onComplete?.invoke(status) }
+      }
+      return
+    }
+
+    onComplete?.let {
+      synchronized(initCallbacks) {
+        initCallbacks.add(it)
+      }
+    }
+
+    if (isInitializingFlag.getAndSet(true)) {
+      log("NextGenAds is currently initializing. Callback queued.")
       return
     }
 
@@ -71,9 +102,18 @@ object NextGenAds {
     val initConfig = InitializationConfig.Builder(appId).build()
 
     MobileAds.initialize(appContext, initConfig) { initStatus ->
+      cachedInitStatus = initStatus
+      isInitializedFlag.set(true)
+      isInitializingFlag.set(false)
       log("Mobile Ads SDK initialization complete: $initStatus")
+
+      val callbacks = synchronized(initCallbacks) {
+        val list = initCallbacks.toList()
+        initCallbacks.clear()
+        list
+      }
       runOnMainThread {
-        onComplete?.invoke(initStatus)
+        callbacks.forEach { it.invoke(initStatus) }
       }
     }
 

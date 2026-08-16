@@ -175,9 +175,14 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
   fun showSplashAoa(
     activity: Activity,
     adUnitId: String? = defaultAdUnitId,
-    timeoutMs: Long = 5000L,
+    timeoutMs: Long = 4000L,
     onComplete: () -> Unit,
   ) {
+    if (activity.isFinishing || activity.isDestroyed) {
+      onComplete()
+      return
+    }
+
     // Tự động vô hiệu hoá autoShow trên SplashActivity để tránh xung đột
     disableForActivity(activity.javaClass)
 
@@ -209,6 +214,11 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
       adUnitId = unitId,
       callback = object : AdEventListener {
         override fun onAdLoaded() {
+          if (activity.isFinishing || activity.isDestroyed) {
+            finishOnce()
+            return
+          }
+
           // Hủy ngay bộ đếm timeout vì quảng cáo đã nạp xong thành công
           timeoutRunnable?.let { handler.removeCallbacks(it) }
 
