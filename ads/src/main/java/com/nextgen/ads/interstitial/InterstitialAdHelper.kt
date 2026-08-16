@@ -106,6 +106,128 @@ object InterstitialAdHelper {
     return true
   }
 
+  /**
+   * Displays a loading overlay briefly before presenting the preloaded Interstitial Ad.
+   *
+   * @param activity The calling activity.
+   * @param adUnitId The AdMob Interstitial Ad Unit ID.
+   * @param loadingMessage Message displayed in the loading dialog.
+   * @param loadingDurationMs Duration to show the loading overlay (default: 800ms).
+   * @param callback Ad lifecycle event listener.
+   * @param onComplete Callback invoked when the ad is closed or if no ad is available.
+   */
+  fun pollAndShowWithLoading(
+    activity: Activity,
+    adUnitId: String,
+    loadingMessage: String = "Loading...",
+    loadingDurationMs: Long = 800L,
+    callback: AdEventListener? = null,
+    onComplete: (() -> Unit)? = null,
+  ) {
+    NextGenAds.runOnMainThread {
+      if (!isPreloadedAdAvailable(adUnitId)) {
+        onComplete?.invoke()
+        return@runOnMainThread
+      }
+
+      val dialog = com.nextgen.ads.dialogs.AdLoadingDialog(activity, loadingMessage)
+      dialog.show()
+
+      android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+        dialog.dismiss()
+        val success = pollAndShow(
+          activity,
+          adUnitId,
+          object : AdEventListener {
+            override fun onAdDismissed() {
+              callback?.onAdDismissed()
+              onComplete?.invoke()
+            }
+
+            override fun onAdFailedToShow(error: FullScreenContentError) {
+              callback?.onAdFailedToShow(error)
+              onComplete?.invoke()
+            }
+
+            override fun onAdShowed() {
+              callback?.onAdShowed()
+            }
+
+            override fun onAdImpression() {
+              callback?.onAdImpression()
+            }
+
+            override fun onAdClicked() {
+              callback?.onAdClicked()
+            }
+
+            override fun onAdPaid(value: AdValue) {
+              callback?.onAdPaid(value)
+            }
+          },
+        )
+        if (!success) {
+          onComplete?.invoke()
+        }
+      }, loadingDurationMs)
+    }
+  }
+
+  /**
+   * Displays a loading overlay while loading and presenting a single Interstitial Ad.
+   */
+  fun loadAndShowWithLoading(
+    activity: Activity,
+    adUnitId: String,
+    loadingMessage: String = "Loading...",
+    callback: AdEventListener? = null,
+    onComplete: (() -> Unit)? = null,
+  ) {
+    NextGenAds.runOnMainThread {
+      val dialog = com.nextgen.ads.dialogs.AdLoadingDialog(activity, loadingMessage)
+      dialog.show()
+
+      load(adUnitId) { ad, error ->
+        dialog.dismiss()
+        if (ad != null) {
+          show(
+            activity,
+            ad,
+            object : AdEventListener {
+              override fun onAdDismissed() {
+                callback?.onAdDismissed()
+                onComplete?.invoke()
+              }
+
+              override fun onAdFailedToShow(err: FullScreenContentError) {
+                callback?.onAdFailedToShow(err)
+                onComplete?.invoke()
+              }
+
+              override fun onAdShowed() {
+                callback?.onAdShowed()
+              }
+
+              override fun onAdImpression() {
+                callback?.onAdImpression()
+              }
+
+              override fun onAdClicked() {
+                callback?.onAdClicked()
+              }
+
+              override fun onAdPaid(value: AdValue) {
+                callback?.onAdPaid(value)
+              }
+            },
+          )
+        } else {
+          onComplete?.invoke()
+        }
+      }
+    }
+  }
+
   // --- Single-Load API ---
 
   /**
@@ -152,16 +274,19 @@ object InterstitialAdHelper {
       ad.adEventCallback = object : InterstitialAdEventCallback {
         override fun onAdShowedFullScreenContent() {
           NextGenAds.log("Interstitial ad shown.")
+          NextGenAds.isFullScreenAdShowing = true
           NextGenAds.runOnMainThread { callback?.onAdShowed() }
         }
 
         override fun onAdDismissedFullScreenContent() {
           NextGenAds.log("Interstitial ad dismissed.")
+          NextGenAds.isFullScreenAdShowing = false
           NextGenAds.runOnMainThread { callback?.onAdDismissed() }
         }
 
         override fun onAdFailedToShowFullScreenContent(fullScreenContentError: FullScreenContentError) {
           NextGenAds.logError("Interstitial ad failed to show: ${fullScreenContentError.message}")
+          NextGenAds.isFullScreenAdShowing = false
           NextGenAds.runOnMainThread { callback?.onAdFailedToShow(fullScreenContentError) }
         }
 
@@ -184,6 +309,7 @@ object InterstitialAdHelper {
       try {
         ad.show(activity)
       } catch (e: Exception) {
+        NextGenAds.isFullScreenAdShowing = false
         NextGenAds.logError("Error showing Interstitial ad: ${e.message}", e)
       }
     }

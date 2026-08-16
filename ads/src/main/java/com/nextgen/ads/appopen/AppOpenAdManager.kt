@@ -45,8 +45,10 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
     private set
 
   private var loadTime: Long = 0
+  private var lastShowTime: Long = 0
   private var defaultAdUnitId: String? = null
   private var isAutoShowEnabled: Boolean = false
+  private var cooldownMs: Long = 20000L // 20s cooldown between auto-shows
   private var currentActivity: Activity? = null
 
   private val disabledActivityClasses = CopyOnWriteArraySet<Class<out Activity>>()
@@ -57,14 +59,17 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
    * @param application The Application instance.
    * @param defaultAdUnitId The default AdMob Ad Unit ID for App Open Ads.
    * @param autoShowOnResume Whether to automatically show the ad when app enters foreground.
+   * @param cooldownSeconds Minimum time in seconds between auto-show triggers (default 20s).
    */
   fun init(
     application: Application,
     defaultAdUnitId: String? = null,
     autoShowOnResume: Boolean = false,
+    cooldownSeconds: Long = 20L,
   ) {
     this.defaultAdUnitId = defaultAdUnitId
     this.isAutoShowEnabled = autoShowOnResume
+    this.cooldownMs = cooldownSeconds * 1000L
 
     application.registerActivityLifecycleCallbacks(this)
     ProcessLifecycleOwner.get().lifecycle.addObserver(this)
@@ -72,6 +77,10 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
 
   fun setAutoShowEnabled(enabled: Boolean) {
     isAutoShowEnabled = enabled
+  }
+
+  fun setCooldownSeconds(seconds: Long) {
+    cooldownMs = seconds * 1000L
   }
 
   fun setDefaultAdUnitId(adUnitId: String) {
@@ -137,6 +146,47 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
   }
 
   /**
+   * Loads and displays an App Open Ad specifically for SplashActivity with a timeout fallback.
+   */
+  fun showSplashAoa(
+    activity: Activity,
+    adUnitId: String? = defaultAdUnitId,
+    timeoutMs: Long = 5000L,
+    onComplete: () -> Unit,
+  ) {
+    val isCompleted = java.util.concurrent.atomic.AtomicBoolean(false)
+    fun finishOnce() {
+      if (!isCompleted.getAndSet(true)) {
+        NextGenAds.runOnMainThread { onComplete() }
+      }
+    }
+
+    // Timeout watchdog
+    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+      finishOnce()
+    }, timeoutMs)
+
+    loadAd(
+      context = activity,
+      adUnitId = adUnitId,
+      callback = object : AdEventListener {
+        override fun onAdLoaded() {
+          if (!isCompleted.get()) {
+            showAdIfAvailable(
+              activity = activity,
+              onCompleteListener = { finishOnce() },
+            )
+          }
+        }
+
+        override fun onAdFailedToLoad(error: LoadAdError) {
+          finishOnce()
+        }
+      },
+    )
+  }
+
+  /**
    * Checks if an ad was loaded within the last [numHours] hours (per policy, 4h max).
    */
   private fun wasLoadTimeLessThanNHoursAgo(numHours: Long = 4): Boolean {
@@ -177,6 +227,8 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
       appOpenAd?.adEventCallback = object : AppOpenAdEventCallback {
         override fun onAdShowedFullScreenContent() {
           NextGenAds.log("App open ad showed.")
+          NextGenAds.isFullScreenAdShowing = true
+          lastShowTime = System.currentTimeMillis()
           NextGenAds.runOnMainThread { callback?.onAdShowed() }
         }
 
@@ -184,6 +236,8 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
           NextGenAds.log("App open ad dismissed.")
           appOpenAd = null
           isShowingAd = false
+          NextGenAds.isFullScreenAdShowing = false
+          lastShowTime = System.currentTimeMillis()
           NextGenAds.runOnMainThread {
             callback?.onAdDismissed()
             onCompleteListener?.onShowAdComplete()
@@ -195,6 +249,7 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
           NextGenAds.logError("App open ad failed to show: ${fullScreenContentError.message}")
           appOpenAd = null
           isShowingAd = false
+          NextGenAds.isFullScreenAdShowing = false
           NextGenAds.runOnMainThread {
             callback?.onAdFailedToShow(fullScreenContentError)
             onCompleteListener?.onShowAdComplete()
@@ -218,6 +273,7 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
         appOpenAd?.show(activity)
       } catch (e: Exception) {
         isShowingAd = false
+        NextGenAds.isFullScreenAdShowing = false
         NextGenAds.logError("Error while showing App Open Ad: ${e.message}", e)
         onCompleteListener?.onShowAdComplete()
       }
@@ -226,7 +282,16 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
 
   // Lifecycle Callbacks
   override fun onStart(owner: LifecycleOwner) {
-    if (!isAutoShowEnabled) return
+    if (!isAutoShowEnabled || isShowingAd || NextGenAds.isFullScreenAdShowing) {
+      NextGenAds.log("Skipping App Open Ad on resume: already showing full screen ad.")
+      return
+    }
+
+    val now = System.currentTimeMillis()
+    if (now - lastShowTime < cooldownMs) {
+      NextGenAds.log("Skipping App Open Ad on resume: cooldown in effect.")
+      return
+    }
 
     val activity = currentActivity ?: return
     if (disabledActivityClasses.contains(activity.javaClass)) {

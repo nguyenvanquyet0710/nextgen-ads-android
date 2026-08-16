@@ -39,6 +39,7 @@ object NextGenAds {
 
   private val isInitializedFlag = AtomicBoolean(false)
   var isDebug: Boolean = false
+  var isFullScreenAdShowing: Boolean = false
 
   val isInitialized: Boolean
     get() = isInitializedFlag.get()

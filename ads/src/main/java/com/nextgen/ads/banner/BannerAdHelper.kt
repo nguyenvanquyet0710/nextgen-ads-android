@@ -50,7 +50,7 @@ object BannerAdHelper {
    */
   fun getAdaptiveBannerAdSize(context: Context, widthDp: Int? = null): AdSize {
     val width = widthDp ?: getScreenWidthDp(context)
-    return AdSize.getLargeAnchoredAdaptiveBannerAdSize(context, width)
+    return AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(context, width)
   }
 
   /**
