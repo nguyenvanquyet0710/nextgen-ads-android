@@ -108,6 +108,18 @@ object NextGenAds {
     log("Updated RequestConfiguration: testDevices=${testDeviceIds.size}, ageTreatment=$ageRestrictedTreatment")
   }
 
+  /**
+   * Checks if the device has an active internet connection.
+   */
+  fun isNetworkAvailable(context: Context): Boolean =
+    com.nextgen.ads.utils.NetworkHelper.isNetworkAvailable(context)
+
+  /**
+   * Observes real-time internet connectivity status as a Kotlin Flow.
+   */
+  fun observeNetworkState(context: Context) =
+    com.nextgen.ads.utils.NetworkHelper.observeNetworkState(context)
+
   internal fun log(message: String) {
     if (isDebug) {
       Log.d(TAG, message)
