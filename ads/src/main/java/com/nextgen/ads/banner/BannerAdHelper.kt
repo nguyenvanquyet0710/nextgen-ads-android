@@ -50,7 +50,7 @@ object BannerAdHelper {
    */
   fun getAdaptiveBannerAdSize(context: Context, widthDp: Int? = null): AdSize {
     val width = widthDp ?: getScreenWidthDp(context)
-    return AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(context, width)
+    return AdSize.getLargeAnchoredAdaptiveBannerAdSize(context, width)
   }
 
   /**
@@ -104,47 +104,50 @@ object BannerAdHelper {
   ) {
     lifecycleOwner?.let { bindLifecycle(adView, it) }
 
-    val bannerAdRequest = BannerAdRequest.Builder(adUnitId, adSize).build()
+    try {
+      val bannerAdRequest = BannerAdRequest.Builder(adUnitId, adSize).build()
+      adView.loadAd(
+        bannerAdRequest,
+        object : AdLoadCallback<BannerAd> {
+          override fun onAdLoaded(ad: BannerAd) {
+            NextGenAds.log("Banner ad loaded for unit: $adUnitId")
 
-    adView.loadAd(
-      bannerAdRequest,
-      object : AdLoadCallback<BannerAd> {
-        override fun onAdLoaded(ad: BannerAd) {
-          NextGenAds.log("Banner ad loaded for unit: $adUnitId")
+            ad.adEventCallback = object : BannerAdEventCallback {
+              override fun onAdImpression() {
+                NextGenAds.log("Banner ad impression recorded.")
+                NextGenAds.runOnMainThread { callback?.onAdImpression() }
+              }
 
-          ad.adEventCallback = object : BannerAdEventCallback {
-            override fun onAdImpression() {
-              NextGenAds.log("Banner ad impression recorded.")
-              callback?.onAdImpression()
+              override fun onAdClicked() {
+                NextGenAds.log("Banner ad clicked.")
+                NextGenAds.runOnMainThread { callback?.onAdClicked() }
+              }
             }
 
-            override fun onAdClicked() {
-              NextGenAds.log("Banner ad clicked.")
-              callback?.onAdClicked()
+            ad.bannerAdRefreshCallback = object : BannerAdRefreshCallback {
+              override fun onAdRefreshed() {
+                NextGenAds.log("Banner ad refreshed.")
+                NextGenAds.runOnMainThread { callback?.onAdRefreshed() }
+              }
+
+              override fun onAdFailedToRefresh(adError: LoadAdError) {
+                NextGenAds.logError("Banner ad failed to refresh: ${adError.message}")
+                NextGenAds.runOnMainThread { callback?.onAdFailedToRefresh(adError) }
+              }
             }
+
+            NextGenAds.runOnMainThread { callback?.onAdLoaded() }
           }
 
-          ad.bannerAdRefreshCallback = object : BannerAdRefreshCallback {
-            override fun onAdRefreshed() {
-              NextGenAds.log("Banner ad refreshed.")
-              callback?.onAdRefreshed()
-            }
-
-            override fun onAdFailedToRefresh(adError: LoadAdError) {
-              NextGenAds.logError("Banner ad failed to refresh: ${adError.message}")
-              callback?.onAdFailedToRefresh(adError)
-            }
+          override fun onAdFailedToLoad(adError: LoadAdError) {
+            NextGenAds.logError("Banner ad failed to load: ${adError.message}")
+            NextGenAds.runOnMainThread { callback?.onAdFailedToLoad(adError) }
           }
-
-          callback?.onAdLoaded()
-        }
-
-        override fun onAdFailedToLoad(adError: LoadAdError) {
-          NextGenAds.logError("Banner ad failed to load: ${adError.message}")
-          callback?.onAdFailedToLoad(adError)
-        }
-      },
-    )
+        },
+      )
+    } catch (e: Exception) {
+      NextGenAds.logError("Failed to load Banner ad: ${e.message}", e)
+    }
   }
 
   /**
@@ -153,7 +156,11 @@ object BannerAdHelper {
   fun bindLifecycle(adView: AdView, lifecycleOwner: LifecycleOwner) {
     lifecycleOwner.lifecycle.addObserver(object : DefaultLifecycleObserver {
       override fun onDestroy(owner: LifecycleOwner) {
-        adView.destroy()
+        try {
+          adView.destroy()
+        } catch (e: Exception) {
+          NextGenAds.logError("Error destroying AdView: ${e.message}", e)
+        }
         owner.lifecycle.removeObserver(this)
       }
     })

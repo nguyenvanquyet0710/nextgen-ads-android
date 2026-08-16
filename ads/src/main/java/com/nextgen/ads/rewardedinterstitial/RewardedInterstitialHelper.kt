@@ -50,33 +50,41 @@ object RewardedInterstitialHelper {
   ) {
     val config = preloadConfig ?: PreloadConfiguration(AdRequest.Builder(adUnitId).build())
 
-    RewardedInterstitialAdPreloader.start(
-      adUnitId,
-      config,
-      object : PreloadCallback {
-        override fun onAdPreloaded(preloadId: String, responseInfo: ResponseInfo) {
-          NextGenAds.log("Rewarded Interstitial ad preloaded for id: $preloadId")
-          listener?.onAdPreloaded(preloadId, responseInfo)
-        }
+    try {
+      RewardedInterstitialAdPreloader.start(
+        adUnitId,
+        config,
+        object : PreloadCallback {
+          override fun onAdPreloaded(preloadId: String, responseInfo: ResponseInfo) {
+            NextGenAds.log("Rewarded Interstitial ad preloaded for id: $preloadId")
+            NextGenAds.runOnMainThread { listener?.onAdPreloaded(preloadId, responseInfo) }
+          }
 
-        override fun onAdFailedToPreload(preloadId: String, adError: LoadAdError) {
-          NextGenAds.logError("Rewarded Interstitial ad failed to preload ($preloadId): ${adError.message}")
-          listener?.onAdFailedToPreload(preloadId, adError)
-        }
+          override fun onAdFailedToPreload(preloadId: String, adError: LoadAdError) {
+            NextGenAds.logError("Rewarded Interstitial ad failed to preload ($preloadId): ${adError.message}")
+            NextGenAds.runOnMainThread { listener?.onAdFailedToPreload(preloadId, adError) }
+          }
 
-        override fun onAdsExhausted(preloadId: String) {
-          NextGenAds.log("Rewarded Interstitial ads exhausted for id: $preloadId")
-          listener?.onAdsExhausted(preloadId)
-        }
-      },
-    )
+          override fun onAdsExhausted(preloadId: String) {
+            NextGenAds.log("Rewarded Interstitial ads exhausted for id: $preloadId")
+            NextGenAds.runOnMainThread { listener?.onAdsExhausted(preloadId) }
+          }
+        },
+      )
+    } catch (e: Exception) {
+      NextGenAds.logError("Failed to start Rewarded Interstitial Preloader: ${e.message}", e)
+    }
   }
 
   /**
    * Checks whether a preloaded Rewarded Interstitial Ad is available.
    */
   fun isPreloadedAdAvailable(adUnitId: String): Boolean {
-    return RewardedInterstitialAdPreloader.isAdAvailable(adUnitId)
+    return try {
+      RewardedInterstitialAdPreloader.isAdAvailable(adUnitId)
+    } catch (e: Exception) {
+      false
+    }
   }
 
   /**
@@ -88,16 +96,87 @@ object RewardedInterstitialHelper {
     callback: AdEventListener? = null,
     onUserEarnedReward: (RewardItem) -> Unit,
   ): Boolean {
-    val ad = RewardedInterstitialAdPreloader.pollAd(adUnitId) ?: return false
+    val ad = try {
+      RewardedInterstitialAdPreloader.pollAd(adUnitId)
+    } catch (e: Exception) {
+      null
+    } ?: return false
+
     show(activity, ad, callback, onUserEarnedReward)
     return true
+  }
+
+  /**
+   * Displays a loading overlay briefly before presenting the preloaded Rewarded Interstitial Ad.
+   */
+  fun pollAndShowWithLoading(
+    activity: Activity,
+    adUnitId: String,
+    loadingMessage: String = "Loading...",
+    loadingDurationMs: Long = 800L,
+    callback: AdEventListener? = null,
+    onUserEarnedReward: (RewardItem) -> Unit,
+    onComplete: (() -> Unit)? = null,
+  ) {
+    NextGenAds.runOnMainThread {
+      if (!isPreloadedAdAvailable(adUnitId)) {
+        onComplete?.invoke()
+        return@runOnMainThread
+      }
+
+      val dialog = com.nextgen.ads.dialogs.AdLoadingDialog(activity, loadingMessage)
+      dialog.show()
+
+      android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+        dialog.dismiss()
+        val success = pollAndShow(
+          activity = activity,
+          adUnitId = adUnitId,
+          callback = object : AdEventListener {
+            override fun onAdDismissed() {
+              callback?.onAdDismissed()
+              onComplete?.invoke()
+            }
+
+            override fun onAdFailedToShow(error: FullScreenContentError) {
+              callback?.onAdFailedToShow(error)
+              onComplete?.invoke()
+            }
+
+            override fun onAdShowed() {
+              callback?.onAdShowed()
+            }
+
+            override fun onAdImpression() {
+              callback?.onAdImpression()
+            }
+
+            override fun onAdClicked() {
+              callback?.onAdClicked()
+            }
+
+            override fun onAdPaid(value: AdValue) {
+              callback?.onAdPaid(value)
+            }
+          },
+          onUserEarnedReward = onUserEarnedReward,
+        )
+        if (!success) {
+          onComplete?.invoke()
+        }
+      }, loadingDurationMs)
+    }
   }
 
   /**
    * Destroys preloader resources for [adUnitId].
    */
   fun destroyPreloader(adUnitId: String) {
-    RewardedInterstitialAdPreloader.destroy(adUnitId)
+    try {
+      RewardedInterstitialAdPreloader.destroy(adUnitId)
+    } catch (e: Exception) {
+      NextGenAds.logError("Error destroying Rewarded Interstitial Preloader: ${e.message}", e)
+    }
   }
 
   // --- Single-Load API ---
@@ -110,20 +189,81 @@ object RewardedInterstitialHelper {
     callback: (ad: RewardedInterstitialAd?, error: LoadAdError?) -> Unit,
   ) {
     val adRequest = AdRequest.Builder(adUnitId).build()
-    RewardedInterstitialAd.load(
-      adRequest,
-      object : AdLoadCallback<RewardedInterstitialAd> {
-        override fun onAdLoaded(ad: RewardedInterstitialAd) {
-          NextGenAds.log("Rewarded Interstitial ad loaded for: $adUnitId")
-          NextGenAds.runOnMainThread { callback(ad, null) }
-        }
+    try {
+      RewardedInterstitialAd.load(
+        adRequest,
+        object : AdLoadCallback<RewardedInterstitialAd> {
+          override fun onAdLoaded(ad: RewardedInterstitialAd) {
+            NextGenAds.log("Rewarded Interstitial ad loaded for: $adUnitId")
+            NextGenAds.runOnMainThread { callback(ad, null) }
+          }
 
-        override fun onAdFailedToLoad(adError: LoadAdError) {
-          NextGenAds.logError("Rewarded Interstitial ad failed to load ($adUnitId): ${adError.message}")
-          NextGenAds.runOnMainThread { callback(null, adError) }
+          override fun onAdFailedToLoad(adError: LoadAdError) {
+            NextGenAds.logError("Rewarded Interstitial ad failed to load ($adUnitId): ${adError.message}")
+            NextGenAds.runOnMainThread { callback(null, adError) }
+          }
+        },
+      )
+    } catch (e: Exception) {
+      NextGenAds.logError("Failed to load Rewarded Interstitial Ad: ${e.message}", e)
+    }
+  }
+
+  /**
+   * Displays a loading overlay while loading and presenting a single Rewarded Interstitial Ad.
+   */
+  fun loadAndShowWithLoading(
+    activity: Activity,
+    adUnitId: String,
+    loadingMessage: String = "Loading...",
+    callback: AdEventListener? = null,
+    onUserEarnedReward: (RewardItem) -> Unit,
+    onComplete: (() -> Unit)? = null,
+  ) {
+    NextGenAds.runOnMainThread {
+      val dialog = com.nextgen.ads.dialogs.AdLoadingDialog(activity, loadingMessage)
+      dialog.show()
+
+      load(adUnitId) { ad, error ->
+        dialog.dismiss()
+        if (ad != null) {
+          show(
+            activity,
+            ad,
+            object : AdEventListener {
+              override fun onAdDismissed() {
+                callback?.onAdDismissed()
+                onComplete?.invoke()
+              }
+
+              override fun onAdFailedToShow(error: FullScreenContentError) {
+                callback?.onAdFailedToShow(error)
+                onComplete?.invoke()
+              }
+
+              override fun onAdShowed() {
+                callback?.onAdShowed()
+              }
+
+              override fun onAdImpression() {
+                callback?.onAdImpression()
+              }
+
+              override fun onAdClicked() {
+                callback?.onAdClicked()
+              }
+
+              override fun onAdPaid(value: AdValue) {
+                callback?.onAdPaid(value)
+              }
+            },
+            onUserEarnedReward,
+          )
+        } else {
+          onComplete?.invoke()
         }
-      },
-    )
+      }
+    }
   }
 
   /**
@@ -139,16 +279,19 @@ object RewardedInterstitialHelper {
       ad.adEventCallback = object : RewardedInterstitialAdEventCallback {
         override fun onAdShowedFullScreenContent() {
           NextGenAds.log("Rewarded Interstitial ad shown.")
+          NextGenAds.isFullScreenAdShowing = true
           NextGenAds.runOnMainThread { callback?.onAdShowed() }
         }
 
         override fun onAdDismissedFullScreenContent() {
           NextGenAds.log("Rewarded Interstitial ad dismissed.")
+          NextGenAds.isFullScreenAdShowing = false
           NextGenAds.runOnMainThread { callback?.onAdDismissed() }
         }
 
         override fun onAdFailedToShowFullScreenContent(fullScreenContentError: FullScreenContentError) {
           NextGenAds.logError("Rewarded Interstitial ad failed to show: ${fullScreenContentError.message}")
+          NextGenAds.isFullScreenAdShowing = false
           NextGenAds.runOnMainThread { callback?.onAdFailedToShow(fullScreenContentError) }
         }
 
@@ -174,6 +317,7 @@ object RewardedInterstitialHelper {
           NextGenAds.runOnMainThread { onUserEarnedReward(rewardItem) }
         }
       } catch (e: Exception) {
+        NextGenAds.isFullScreenAdShowing = false
         NextGenAds.logError("Error showing Rewarded Interstitial ad: ${e.message}", e)
       }
     }

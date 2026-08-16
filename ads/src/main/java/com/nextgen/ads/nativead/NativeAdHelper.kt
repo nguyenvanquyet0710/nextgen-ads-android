@@ -58,40 +58,52 @@ object NativeAdHelper {
       PreloadConfiguration(adRequest)
     }
 
-    NativeAdPreloader.start(
-      adUnitId,
-      config,
-      object : PreloadCallback {
-        override fun onAdPreloaded(preloadId: String, responseInfo: ResponseInfo) {
-          NextGenAds.log("Native ad preloaded for id: $preloadId")
-          listener?.onAdPreloaded(preloadId, responseInfo)
-        }
+    try {
+      NativeAdPreloader.start(
+        adUnitId,
+        config,
+        object : PreloadCallback {
+          override fun onAdPreloaded(preloadId: String, responseInfo: ResponseInfo) {
+            NextGenAds.log("Native ad preloaded for id: $preloadId")
+            NextGenAds.runOnMainThread { listener?.onAdPreloaded(preloadId, responseInfo) }
+          }
 
-        override fun onAdFailedToPreload(preloadId: String, adError: LoadAdError) {
-          NextGenAds.logError("Native ad failed to preload ($preloadId): ${adError.message}")
-          listener?.onAdFailedToPreload(preloadId, adError)
-        }
+          override fun onAdFailedToPreload(preloadId: String, adError: LoadAdError) {
+            NextGenAds.logError("Native ad failed to preload ($preloadId): ${adError.message}")
+            NextGenAds.runOnMainThread { listener?.onAdFailedToPreload(preloadId, adError) }
+          }
 
-        override fun onAdsExhausted(preloadId: String) {
-          NextGenAds.log("Native ads exhausted for id: $preloadId")
-          listener?.onAdsExhausted(preloadId)
-        }
-      },
-    )
+          override fun onAdsExhausted(preloadId: String) {
+            NextGenAds.log("Native ads exhausted for id: $preloadId")
+            NextGenAds.runOnMainThread { listener?.onAdsExhausted(preloadId) }
+          }
+        },
+      )
+    } catch (e: Exception) {
+      NextGenAds.logError("Failed to start Native Preloader: ${e.message}", e)
+    }
   }
 
   /**
    * Checks whether a preloaded Native Ad is available.
    */
   fun isPreloadedAdAvailable(adUnitId: String): Boolean {
-    return NativeAdPreloader.isAdAvailable(adUnitId)
+    return try {
+      NativeAdPreloader.isAdAvailable(adUnitId)
+    } catch (e: Exception) {
+      false
+    }
   }
 
   /**
    * Polls the next preloaded Native Ad.
    */
   fun pollAd(adUnitId: String): NativeAd? {
-    val result = NativeAdPreloader.pollAd(adUnitId)
+    val result = try {
+      NativeAdPreloader.pollAd(adUnitId)
+    } catch (e: Exception) {
+      null
+    }
     return if (result is NativeAdLoadResult.NativeAdSuccess) {
       result.ad
     } else {
@@ -103,7 +115,11 @@ object NativeAdHelper {
    * Destroys preloader resources for [adUnitId].
    */
   fun destroyPreloader(adUnitId: String) {
-    NativeAdPreloader.destroy(adUnitId)
+    try {
+      NativeAdPreloader.destroy(adUnitId)
+    } catch (e: Exception) {
+      NextGenAds.logError("Error destroying Native Preloader: ${e.message}", e)
+    }
   }
 
   // --- Single-Load API ---
@@ -121,20 +137,24 @@ object NativeAdHelper {
       .setVideoOptions(videoOptions)
       .build()
 
-    NativeAdLoader.load(
-      adRequest,
-      object : NativeAdLoaderCallback {
-        override fun onNativeAdLoaded(nativeAd: NativeAd) {
-          NextGenAds.log("Native ad loaded for: $adUnitId")
-          callback(nativeAd, null)
-        }
+    try {
+      NativeAdLoader.load(
+        adRequest,
+        object : NativeAdLoaderCallback {
+          override fun onNativeAdLoaded(nativeAd: NativeAd) {
+            NextGenAds.log("Native ad loaded for: $adUnitId")
+            NextGenAds.runOnMainThread { callback(nativeAd, null) }
+          }
 
-        override fun onAdFailedToLoad(adError: LoadAdError) {
-          NextGenAds.logError("Native ad failed to load ($adUnitId): ${adError.message}")
-          callback(null, adError)
-        }
-      },
-    )
+          override fun onAdFailedToLoad(adError: LoadAdError) {
+            NextGenAds.logError("Native ad failed to load ($adUnitId): ${adError.message}")
+            NextGenAds.runOnMainThread { callback(null, adError) }
+          }
+        },
+      )
+    } catch (e: Exception) {
+      NextGenAds.logError("Failed to load Native ad: ${e.message}", e)
+    }
   }
 
   /**
@@ -144,32 +164,32 @@ object NativeAdHelper {
     nativeAd.adEventCallback = object : NativeAdEventCallback {
       override fun onAdShowedFullScreenContent() {
         NextGenAds.log("Native ad showed full screen content.")
-        callback.onAdShowed()
+        NextGenAds.runOnMainThread { callback.onAdShowed() }
       }
 
       override fun onAdDismissedFullScreenContent() {
         NextGenAds.log("Native ad dismissed full screen content.")
-        callback.onAdDismissed()
+        NextGenAds.runOnMainThread { callback.onAdDismissed() }
       }
 
       override fun onAdFailedToShowFullScreenContent(fullScreenContentError: FullScreenContentError) {
         NextGenAds.logError("Native ad failed to show full screen content: ${fullScreenContentError.message}")
-        callback.onAdFailedToShow(fullScreenContentError)
+        NextGenAds.runOnMainThread { callback.onAdFailedToShow(fullScreenContentError) }
       }
 
       override fun onAdImpression() {
         NextGenAds.log("Native ad recorded impression.")
-        callback.onAdImpression()
+        NextGenAds.runOnMainThread { callback.onAdImpression() }
       }
 
       override fun onAdClicked() {
         NextGenAds.log("Native ad clicked.")
-        callback.onAdClicked()
+        NextGenAds.runOnMainThread { callback.onAdClicked() }
       }
 
       override fun onAdPaid(value: AdValue) {
         NextGenAds.log("Native ad paid event: ${value.valueMicros} ${value.currencyCode}")
-        callback.onAdPaid(value)
+        NextGenAds.runOnMainThread { callback.onAdPaid(value) }
       }
     }
   }

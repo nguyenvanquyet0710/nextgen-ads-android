@@ -18,21 +18,29 @@ package com.nextgen.ads.dialogs
 
 import android.app.Activity
 import android.app.Dialog
+import android.content.res.ColorStateList
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.ViewGroup
 import android.view.Window
+import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import com.nextgen.ads.NextGenAds
 
 /**
- * Lightweight loading dialog shown before presenting full-screen ads.
+ * Premium, modern loading dialog shown smoothly before presenting full-screen ads.
  */
-class AdLoadingDialog(private val activity: Activity, private val message: String = "Loading...") {
+class AdLoadingDialog(
+  private val activity: Activity,
+  private val message: String = "Loading...",
+) {
   private var dialog: Dialog? = null
 
   fun show() {
@@ -40,39 +48,67 @@ class AdLoadingDialog(private val activity: Activity, private val message: Strin
       if (activity.isFinishing || activity.isDestroyed) return@runOnMainThread
 
       try {
+        if (dialog?.isShowing == true) return@runOnMainThread
+
         dialog = Dialog(activity).apply {
           requestWindowFeature(Window.FEATURE_NO_TITLE)
           setCancelable(false)
           setCanceledOnTouchOutside(false)
-          window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
+          window?.apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            setDimAmount(0.35f)
+          }
+
+          val isNightMode = (activity.resources.configuration.uiMode and
+            Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
           val density = activity.resources.displayMetrics.density
 
-          val rootLayout = LinearLayout(activity).apply {
+          // Container Card
+          val cardLayout = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            val padH = (24 * density).toInt()
+
+            val padH = (22 * density).toInt()
             val padV = (16 * density).toInt()
             setPadding(padH, padV, padH, padV)
 
-            val shape = GradientDrawable().apply {
-              setColor(Color.parseColor("#E6212121"))
-              cornerRadius = 12 * density
+            val bgCardColor = if (isNightMode) Color.parseColor("#282828") else Color.parseColor("#FFFFFF")
+            val cardShape = GradientDrawable().apply {
+              setColor(bgCardColor)
+              cornerRadius = 16 * density
+              if (!isNightMode) {
+                setStroke((1 * density).toInt(), Color.parseColor("#E0E0E0"))
+              }
             }
-            background = shape
+            background = cardShape
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+              elevation = 12 * density
+            }
 
+            // Material Google Blue ProgressBar
             val progressBar = ProgressBar(activity).apply {
-              val size = (32 * density).toInt()
+              val size = (28 * density).toInt()
               layoutParams = LinearLayout.LayoutParams(size, size).apply {
-                marginEnd = (16 * density).toInt()
+                marginEnd = (14 * density).toInt()
+              }
+              val accentColor = Color.parseColor("#1A73E8") // Google Material Blue
+              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                indeterminateTintList = ColorStateList.valueOf(accentColor)
               }
             }
             addView(progressBar)
 
+            // Crisp Typography
+            val textColor = if (isNightMode) Color.parseColor("#F1F3F4") else Color.parseColor("#202124")
             val textView = TextView(activity).apply {
               text = message
-              setTextColor(Color.WHITE)
-              textSize = 15f
+              setTextColor(textColor)
+              setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+              letterSpacing = 0.01f
               layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -81,7 +117,7 @@ class AdLoadingDialog(private val activity: Activity, private val message: Strin
             addView(textView)
           }
 
-          setContentView(rootLayout)
+          setContentView(cardLayout)
           show()
         }
       } catch (e: Exception) {

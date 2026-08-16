@@ -199,8 +199,8 @@ object InterstitialAdHelper {
                 onComplete?.invoke()
               }
 
-              override fun onAdFailedToShow(err: FullScreenContentError) {
-                callback?.onAdFailedToShow(err)
+              override fun onAdFailedToShow(error: FullScreenContentError) {
+                callback?.onAdFailedToShow(error)
                 onComplete?.invoke()
               }
 

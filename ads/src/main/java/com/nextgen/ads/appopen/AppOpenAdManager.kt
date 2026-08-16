@@ -106,11 +106,27 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
     val unitId = adUnitId ?: defaultAdUnitId
     if (unitId.isNullOrEmpty()) {
       NextGenAds.logError("Cannot load App Open Ad: adUnitId is null or empty.")
+      NextGenAds.runOnMainThread {
+        callback?.onAdFailedToLoad(
+          LoadAdError(
+            LoadAdError.ErrorCode.INVALID_REQUEST,
+            "AdUnitId is null or empty",
+          ),
+        )
+      }
       return
     }
 
-    if (isLoadingAd || isAdAvailable()) {
-      NextGenAds.log("App open ad is already loading or loaded.")
+    if (isAdAvailable()) {
+      NextGenAds.log("App open ad is already available in cache.")
+      NextGenAds.runOnMainThread {
+        callback?.onAdLoaded()
+      }
+      return
+    }
+
+    if (isLoadingAd) {
+      NextGenAds.log("App open ad is already loading.")
       return
     }
 
@@ -142,6 +158,14 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
     } catch (e: Exception) {
       isLoadingAd = false
       NextGenAds.logError("Failed to request App Open Ad. Make sure NextGenAds.initialize(...) is called first: ${e.message}", e)
+      NextGenAds.runOnMainThread {
+        callback?.onAdFailedToLoad(
+          LoadAdError(
+            LoadAdError.ErrorCode.INTERNAL_ERROR,
+            e.message ?: "Exception",
+          ),
+        )
+      }
     }
   }
 
@@ -154,23 +178,40 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
     timeoutMs: Long = 5000L,
     onComplete: () -> Unit,
   ) {
+    // Tự động vô hiệu hoá autoShow trên SplashActivity để tránh xung đột
+    disableForActivity(activity.javaClass)
+
     val isCompleted = java.util.concurrent.atomic.AtomicBoolean(false)
+    val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    var timeoutRunnable: Runnable? = null
+
     fun finishOnce() {
+      timeoutRunnable?.let { handler.removeCallbacks(it) }
       if (!isCompleted.getAndSet(true)) {
         NextGenAds.runOnMainThread { onComplete() }
       }
     }
 
-    // Timeout watchdog
-    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+    timeoutRunnable = Runnable {
+      NextGenAds.log("Splash AOA timeout reached ($timeoutMs ms). Navigating to main.")
       finishOnce()
-    }, timeoutMs)
+    }
+    handler.postDelayed(timeoutRunnable, timeoutMs)
+
+    val unitId = adUnitId ?: defaultAdUnitId
+    if (unitId.isNullOrEmpty()) {
+      finishOnce()
+      return
+    }
 
     loadAd(
       context = activity,
-      adUnitId = adUnitId,
+      adUnitId = unitId,
       callback = object : AdEventListener {
         override fun onAdLoaded() {
+          // Hủy ngay bộ đếm timeout vì quảng cáo đã nạp xong thành công
+          timeoutRunnable?.let { handler.removeCallbacks(it) }
+
           if (!isCompleted.get()) {
             showAdIfAvailable(
               activity = activity,
@@ -180,6 +221,7 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
         }
 
         override fun onAdFailedToLoad(error: LoadAdError) {
+          timeoutRunnable?.let { handler.removeCallbacks(it) }
           finishOnce()
         }
       },
