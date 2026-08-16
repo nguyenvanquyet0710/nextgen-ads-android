@@ -111,12 +111,12 @@ object RewardedAdHelper {
       object : AdLoadCallback<RewardedAd> {
         override fun onAdLoaded(ad: RewardedAd) {
           NextGenAds.log("Rewarded ad loaded for: $adUnitId")
-          callback(ad, null)
+          NextGenAds.runOnMainThread { callback(ad, null) }
         }
 
         override fun onAdFailedToLoad(adError: LoadAdError) {
           NextGenAds.logError("Rewarded ad failed to load ($adUnitId): ${adError.message}")
-          callback(null, adError)
+          NextGenAds.runOnMainThread { callback(null, adError) }
         }
       },
     )
@@ -131,44 +131,50 @@ object RewardedAdHelper {
     callback: AdEventListener? = null,
     onUserEarnedReward: (RewardItem) -> Unit,
   ) {
-    ad.adEventCallback = object : RewardedAdEventCallback {
-      override fun onAdShowedFullScreenContent() {
-        NextGenAds.log("Rewarded ad shown.")
-        callback?.onAdShowed()
+    NextGenAds.runOnMainThread {
+      ad.adEventCallback = object : RewardedAdEventCallback {
+        override fun onAdShowedFullScreenContent() {
+          NextGenAds.log("Rewarded ad shown.")
+          NextGenAds.runOnMainThread { callback?.onAdShowed() }
+        }
+
+        override fun onAdDismissedFullScreenContent() {
+          NextGenAds.log("Rewarded ad dismissed.")
+          NextGenAds.runOnMainThread { callback?.onAdDismissed() }
+        }
+
+        override fun onAdFailedToShowFullScreenContent(fullScreenContentError: FullScreenContentError) {
+          NextGenAds.logError("Rewarded ad failed to show: ${fullScreenContentError.message}")
+          NextGenAds.runOnMainThread { callback?.onAdFailedToShow(fullScreenContentError) }
+        }
+
+        override fun onAdImpression() {
+          NextGenAds.log("Rewarded ad recorded impression.")
+          NextGenAds.runOnMainThread { callback?.onAdImpression() }
+        }
+
+        override fun onAdClicked() {
+          NextGenAds.log("Rewarded ad clicked.")
+          NextGenAds.runOnMainThread { callback?.onAdClicked() }
+        }
+
+        override fun onAdPaid(value: AdValue) {
+          NextGenAds.log("Rewarded ad paid event: ${value.valueMicros} ${value.currencyCode}")
+          NextGenAds.runOnMainThread { callback?.onAdPaid(value) }
+        }
       }
 
-      override fun onAdDismissedFullScreenContent() {
-        NextGenAds.log("Rewarded ad dismissed.")
-        callback?.onAdDismissed()
-      }
-
-      override fun onAdFailedToShowFullScreenContent(fullScreenContentError: FullScreenContentError) {
-        NextGenAds.logError("Rewarded ad failed to show: ${fullScreenContentError.message}")
-        callback?.onAdFailedToShow(fullScreenContentError)
-      }
-
-      override fun onAdImpression() {
-        NextGenAds.log("Rewarded ad recorded impression.")
-        callback?.onAdImpression()
-      }
-
-      override fun onAdClicked() {
-        NextGenAds.log("Rewarded ad clicked.")
-        callback?.onAdClicked()
-      }
-
-      override fun onAdPaid(value: AdValue) {
-        NextGenAds.log("Rewarded ad paid event: ${value.valueMicros} ${value.currencyCode}")
-        callback?.onAdPaid(value)
+      try {
+        ad.show(
+          activity,
+          OnUserEarnedRewardListener { rewardItem ->
+            NextGenAds.log("User earned reward: ${rewardItem.amount} ${rewardItem.type}")
+            NextGenAds.runOnMainThread { onUserEarnedReward(rewardItem) }
+          },
+        )
+      } catch (e: Exception) {
+        NextGenAds.logError("Error showing Rewarded ad: ${e.message}", e)
       }
     }
-
-    ad.show(
-      activity,
-      OnUserEarnedRewardListener { rewardItem ->
-        NextGenAds.log("User earned reward: ${rewardItem.amount} ${rewardItem.type}")
-        onUserEarnedReward(rewardItem)
-      },
-    )
   }
 }

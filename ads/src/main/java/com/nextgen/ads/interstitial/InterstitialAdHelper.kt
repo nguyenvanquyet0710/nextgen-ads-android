@@ -56,17 +56,17 @@ object InterstitialAdHelper {
         object : PreloadCallback {
           override fun onAdPreloaded(preloadId: String, responseInfo: ResponseInfo) {
             NextGenAds.log("Interstitial ad preloaded for id: $preloadId")
-            listener?.onAdPreloaded(preloadId, responseInfo)
+            NextGenAds.runOnMainThread { listener?.onAdPreloaded(preloadId, responseInfo) }
           }
 
           override fun onAdFailedToPreload(preloadId: String, adError: LoadAdError) {
             NextGenAds.logError("Interstitial ad failed to preload ($preloadId): ${adError.message}")
-            listener?.onAdFailedToPreload(preloadId, adError)
+            NextGenAds.runOnMainThread { listener?.onAdFailedToPreload(preloadId, adError) }
           }
 
           override fun onAdsExhausted(preloadId: String) {
             NextGenAds.log("Interstitial ads exhausted for id: $preloadId")
-            listener?.onAdsExhausted(preloadId)
+            NextGenAds.runOnMainThread { listener?.onAdsExhausted(preloadId) }
           }
         },
       )
@@ -122,12 +122,16 @@ object InterstitialAdHelper {
         object : AdLoadCallback<InterstitialAd> {
           override fun onAdLoaded(ad: InterstitialAd) {
             NextGenAds.log("Interstitial ad loaded for: $adUnitId")
-            callback(ad, null)
+            NextGenAds.runOnMainThread {
+              callback(ad, null)
+            }
           }
 
           override fun onAdFailedToLoad(adError: LoadAdError) {
             NextGenAds.logError("Interstitial ad failed to load ($adUnitId): ${adError.message}")
-            callback(null, adError)
+            NextGenAds.runOnMainThread {
+              callback(null, adError)
+            }
           }
         },
       )
@@ -144,38 +148,44 @@ object InterstitialAdHelper {
     ad: InterstitialAd,
     callback: AdEventListener? = null,
   ) {
-    ad.adEventCallback = object : InterstitialAdEventCallback {
-      override fun onAdShowedFullScreenContent() {
-        NextGenAds.log("Interstitial ad shown.")
-        callback?.onAdShowed()
+    NextGenAds.runOnMainThread {
+      ad.adEventCallback = object : InterstitialAdEventCallback {
+        override fun onAdShowedFullScreenContent() {
+          NextGenAds.log("Interstitial ad shown.")
+          NextGenAds.runOnMainThread { callback?.onAdShowed() }
+        }
+
+        override fun onAdDismissedFullScreenContent() {
+          NextGenAds.log("Interstitial ad dismissed.")
+          NextGenAds.runOnMainThread { callback?.onAdDismissed() }
+        }
+
+        override fun onAdFailedToShowFullScreenContent(fullScreenContentError: FullScreenContentError) {
+          NextGenAds.logError("Interstitial ad failed to show: ${fullScreenContentError.message}")
+          NextGenAds.runOnMainThread { callback?.onAdFailedToShow(fullScreenContentError) }
+        }
+
+        override fun onAdImpression() {
+          NextGenAds.log("Interstitial ad recorded impression.")
+          NextGenAds.runOnMainThread { callback?.onAdImpression() }
+        }
+
+        override fun onAdClicked() {
+          NextGenAds.log("Interstitial ad clicked.")
+          NextGenAds.runOnMainThread { callback?.onAdClicked() }
+        }
+
+        override fun onAdPaid(value: AdValue) {
+          NextGenAds.log("Interstitial ad paid event: ${value.valueMicros} ${value.currencyCode}")
+          NextGenAds.runOnMainThread { callback?.onAdPaid(value) }
+        }
       }
 
-      override fun onAdDismissedFullScreenContent() {
-        NextGenAds.log("Interstitial ad dismissed.")
-        callback?.onAdDismissed()
-      }
-
-      override fun onAdFailedToShowFullScreenContent(fullScreenContentError: FullScreenContentError) {
-        NextGenAds.logError("Interstitial ad failed to show: ${fullScreenContentError.message}")
-        callback?.onAdFailedToShow(fullScreenContentError)
-      }
-
-      override fun onAdImpression() {
-        NextGenAds.log("Interstitial ad recorded impression.")
-        callback?.onAdImpression()
-      }
-
-      override fun onAdClicked() {
-        NextGenAds.log("Interstitial ad clicked.")
-        callback?.onAdClicked()
-      }
-
-      override fun onAdPaid(value: AdValue) {
-        NextGenAds.log("Interstitial ad paid event: ${value.valueMicros} ${value.currencyCode}")
-        callback?.onAdPaid(value)
+      try {
+        ad.show(activity)
+      } catch (e: Exception) {
+        NextGenAds.logError("Error showing Interstitial ad: ${e.message}", e)
       }
     }
-
-    ad.show(activity)
   }
 }

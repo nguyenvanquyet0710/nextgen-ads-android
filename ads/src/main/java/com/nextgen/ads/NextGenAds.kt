@@ -71,7 +71,9 @@ object NextGenAds {
 
     MobileAds.initialize(appContext, initConfig) { initStatus ->
       log("Mobile Ads SDK initialization complete: $initStatus")
-      onComplete?.invoke(initStatus)
+      runOnMainThread {
+        onComplete?.invoke(initStatus)
+      }
     }
 
     if (testDeviceIds.isNotEmpty() || ageRestrictedTreatment != null) {
@@ -126,5 +128,13 @@ object NextGenAds {
 
   internal fun logError(message: String, throwable: Throwable? = null) {
     Log.e(TAG, message, throwable)
+  }
+
+  internal fun runOnMainThread(action: () -> Unit) {
+    if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+      action()
+    } else {
+      android.os.Handler(android.os.Looper.getMainLooper()).post(action)
+    }
   }
 }

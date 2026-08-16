@@ -78,12 +78,12 @@ class ConsentManager private constructor(context: Context) {
       {
         UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity) { formError ->
           NextGenAds.log("Consent form dismissed or completed. FormError: $formError")
-          onConsentGatheringComplete(formError)
+          NextGenAds.runOnMainThread { onConsentGatheringComplete(formError) }
         }
       },
       { requestConsentError ->
         NextGenAds.logError("Error requesting consent info update: ${requestConsentError.message}")
-        onConsentGatheringComplete(requestConsentError)
+        NextGenAds.runOnMainThread { onConsentGatheringComplete(requestConsentError) }
       },
     )
   }

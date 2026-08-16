@@ -115,12 +115,12 @@ object RewardedInterstitialHelper {
       object : AdLoadCallback<RewardedInterstitialAd> {
         override fun onAdLoaded(ad: RewardedInterstitialAd) {
           NextGenAds.log("Rewarded Interstitial ad loaded for: $adUnitId")
-          callback(ad, null)
+          NextGenAds.runOnMainThread { callback(ad, null) }
         }
 
         override fun onAdFailedToLoad(adError: LoadAdError) {
           NextGenAds.logError("Rewarded Interstitial ad failed to load ($adUnitId): ${adError.message}")
-          callback(null, adError)
+          NextGenAds.runOnMainThread { callback(null, adError) }
         }
       },
     )
@@ -135,41 +135,47 @@ object RewardedInterstitialHelper {
     callback: AdEventListener? = null,
     onUserEarnedReward: (RewardItem) -> Unit,
   ) {
-    ad.adEventCallback = object : RewardedInterstitialAdEventCallback {
-      override fun onAdShowedFullScreenContent() {
-        NextGenAds.log("Rewarded Interstitial ad shown.")
-        callback?.onAdShowed()
+    NextGenAds.runOnMainThread {
+      ad.adEventCallback = object : RewardedInterstitialAdEventCallback {
+        override fun onAdShowedFullScreenContent() {
+          NextGenAds.log("Rewarded Interstitial ad shown.")
+          NextGenAds.runOnMainThread { callback?.onAdShowed() }
+        }
+
+        override fun onAdDismissedFullScreenContent() {
+          NextGenAds.log("Rewarded Interstitial ad dismissed.")
+          NextGenAds.runOnMainThread { callback?.onAdDismissed() }
+        }
+
+        override fun onAdFailedToShowFullScreenContent(fullScreenContentError: FullScreenContentError) {
+          NextGenAds.logError("Rewarded Interstitial ad failed to show: ${fullScreenContentError.message}")
+          NextGenAds.runOnMainThread { callback?.onAdFailedToShow(fullScreenContentError) }
+        }
+
+        override fun onAdImpression() {
+          NextGenAds.log("Rewarded Interstitial ad recorded impression.")
+          NextGenAds.runOnMainThread { callback?.onAdImpression() }
+        }
+
+        override fun onAdClicked() {
+          NextGenAds.log("Rewarded Interstitial ad clicked.")
+          NextGenAds.runOnMainThread { callback?.onAdClicked() }
+        }
+
+        override fun onAdPaid(value: AdValue) {
+          NextGenAds.log("Rewarded Interstitial ad paid event: ${value.valueMicros} ${value.currencyCode}")
+          NextGenAds.runOnMainThread { callback?.onAdPaid(value) }
+        }
       }
 
-      override fun onAdDismissedFullScreenContent() {
-        NextGenAds.log("Rewarded Interstitial ad dismissed.")
-        callback?.onAdDismissed()
+      try {
+        ad.show(activity) { rewardItem ->
+          NextGenAds.log("User earned reward from rewarded interstitial: ${rewardItem.amount} ${rewardItem.type}")
+          NextGenAds.runOnMainThread { onUserEarnedReward(rewardItem) }
+        }
+      } catch (e: Exception) {
+        NextGenAds.logError("Error showing Rewarded Interstitial ad: ${e.message}", e)
       }
-
-      override fun onAdFailedToShowFullScreenContent(fullScreenContentError: FullScreenContentError) {
-        NextGenAds.logError("Rewarded Interstitial ad failed to show: ${fullScreenContentError.message}")
-        callback?.onAdFailedToShow(fullScreenContentError)
-      }
-
-      override fun onAdImpression() {
-        NextGenAds.log("Rewarded Interstitial ad recorded impression.")
-        callback?.onAdImpression()
-      }
-
-      override fun onAdClicked() {
-        NextGenAds.log("Rewarded Interstitial ad clicked.")
-        callback?.onAdClicked()
-      }
-
-      override fun onAdPaid(value: AdValue) {
-        NextGenAds.log("Rewarded Interstitial ad paid event: ${value.valueMicros} ${value.currencyCode}")
-        callback?.onAdPaid(value)
-      }
-    }
-
-    ad.show(activity) { rewardItem ->
-      NextGenAds.log("User earned reward from rewarded interstitial: ${rewardItem.amount} ${rewardItem.type}")
-      onUserEarnedReward(rewardItem)
     }
   }
 }

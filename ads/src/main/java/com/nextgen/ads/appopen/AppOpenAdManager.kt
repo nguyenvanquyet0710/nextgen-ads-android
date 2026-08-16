@@ -116,13 +116,17 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
             isLoadingAd = false
             loadTime = Date().time
             NextGenAds.log("App open ad loaded successfully.")
-            callback?.onAdLoaded()
+            NextGenAds.runOnMainThread {
+              callback?.onAdLoaded()
+            }
           }
 
           override fun onAdFailedToLoad(adError: LoadAdError) {
             isLoadingAd = false
             NextGenAds.logError("App open ad failed to load: ${adError.message}")
-            callback?.onAdFailedToLoad(adError)
+            NextGenAds.runOnMainThread {
+              callback?.onAdFailedToLoad(adError)
+            }
           }
         },
       )
@@ -156,56 +160,68 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
     onCompleteListener: OnShowAdCompleteListener? = null,
     callback: AdEventListener? = null,
   ) {
-    if (isShowingAd) {
-      NextGenAds.log("App open ad is already showing.")
-      onCompleteListener?.onShowAdComplete()
-      return
-    }
-
-    if (!isAdAvailable()) {
-      NextGenAds.log("App open ad is not ready yet.")
-      onCompleteListener?.onShowAdComplete()
-      defaultAdUnitId?.let { loadAd(activity, it) }
-      return
-    }
-
-    appOpenAd?.adEventCallback = object : AppOpenAdEventCallback {
-      override fun onAdShowedFullScreenContent() {
-        NextGenAds.log("App open ad showed.")
-        callback?.onAdShowed()
+    NextGenAds.runOnMainThread {
+      if (isShowingAd) {
+        NextGenAds.log("App open ad is already showing.")
+        onCompleteListener?.onShowAdComplete()
+        return@runOnMainThread
       }
 
-      override fun onAdDismissedFullScreenContent() {
-        NextGenAds.log("App open ad dismissed.")
-        appOpenAd = null
-        isShowingAd = false
-        callback?.onAdDismissed()
+      if (!isAdAvailable()) {
+        NextGenAds.log("App open ad is not ready yet.")
         onCompleteListener?.onShowAdComplete()
         defaultAdUnitId?.let { loadAd(activity, it) }
+        return@runOnMainThread
       }
 
-      override fun onAdFailedToShowFullScreenContent(fullScreenContentError: FullScreenContentError) {
-        NextGenAds.logError("App open ad failed to show: ${fullScreenContentError.message}")
-        appOpenAd = null
+      appOpenAd?.adEventCallback = object : AppOpenAdEventCallback {
+        override fun onAdShowedFullScreenContent() {
+          NextGenAds.log("App open ad showed.")
+          NextGenAds.runOnMainThread { callback?.onAdShowed() }
+        }
+
+        override fun onAdDismissedFullScreenContent() {
+          NextGenAds.log("App open ad dismissed.")
+          appOpenAd = null
+          isShowingAd = false
+          NextGenAds.runOnMainThread {
+            callback?.onAdDismissed()
+            onCompleteListener?.onShowAdComplete()
+          }
+          defaultAdUnitId?.let { loadAd(activity, it) }
+        }
+
+        override fun onAdFailedToShowFullScreenContent(fullScreenContentError: FullScreenContentError) {
+          NextGenAds.logError("App open ad failed to show: ${fullScreenContentError.message}")
+          appOpenAd = null
+          isShowingAd = false
+          NextGenAds.runOnMainThread {
+            callback?.onAdFailedToShow(fullScreenContentError)
+            onCompleteListener?.onShowAdComplete()
+          }
+          defaultAdUnitId?.let { loadAd(activity, it) }
+        }
+
+        override fun onAdImpression() {
+          NextGenAds.log("App open ad recorded impression.")
+          NextGenAds.runOnMainThread { callback?.onAdImpression() }
+        }
+
+        override fun onAdClicked() {
+          NextGenAds.log("App open ad recorded click.")
+          NextGenAds.runOnMainThread { callback?.onAdClicked() }
+        }
+      }
+
+      isShowingAd = true
+      try {
+        appOpenAd?.show(activity)
+      } catch (e: Exception) {
         isShowingAd = false
-        callback?.onAdFailedToShow(fullScreenContentError)
+        NextGenAds.logError("Error while showing App Open Ad: ${e.message}", e)
         onCompleteListener?.onShowAdComplete()
-        defaultAdUnitId?.let { loadAd(activity, it) }
-      }
-
-      override fun onAdImpression() {
-        NextGenAds.log("App open ad recorded impression.")
-        callback?.onAdImpression()
-      }
-
-      override fun onAdClicked() {
-        NextGenAds.log("App open ad recorded click.")
-        callback?.onAdClicked()
       }
     }
-
-    isShowingAd = true
-    appOpenAd?.show(activity)
   }
 
   // Lifecycle Callbacks
