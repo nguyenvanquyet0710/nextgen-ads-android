@@ -105,27 +105,31 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
       return
     }
 
-    isLoadingAd = true
-    val adRequest = AdRequest.Builder(unitId).build()
+    try {
+      isLoadingAd = true
+      val adRequest = AdRequest.Builder(unitId).build()
+      AppOpenAd.load(
+        adRequest,
+        object : AdLoadCallback<AppOpenAd> {
+          override fun onAdLoaded(ad: AppOpenAd) {
+            appOpenAd = ad
+            isLoadingAd = false
+            loadTime = Date().time
+            NextGenAds.log("App open ad loaded successfully.")
+            callback?.onAdLoaded()
+          }
 
-    AppOpenAd.load(
-      adRequest,
-      object : AdLoadCallback<AppOpenAd> {
-        override fun onAdLoaded(ad: AppOpenAd) {
-          appOpenAd = ad
-          isLoadingAd = false
-          loadTime = Date().time
-          NextGenAds.log("App open ad loaded successfully.")
-          callback?.onAdLoaded()
-        }
-
-        override fun onAdFailedToLoad(adError: LoadAdError) {
-          isLoadingAd = false
-          NextGenAds.logError("App open ad failed to load: ${adError.message}")
-          callback?.onAdFailedToLoad(adError)
-        }
-      },
-    )
+          override fun onAdFailedToLoad(adError: LoadAdError) {
+            isLoadingAd = false
+            NextGenAds.logError("App open ad failed to load: ${adError.message}")
+            callback?.onAdFailedToLoad(adError)
+          }
+        },
+      )
+    } catch (e: Exception) {
+      isLoadingAd = false
+      NextGenAds.logError("Failed to request App Open Ad. Make sure NextGenAds.initialize(...) is called first: ${e.message}", e)
+    }
   }
 
   /**

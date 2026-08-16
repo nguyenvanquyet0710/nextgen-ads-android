@@ -65,22 +65,20 @@ object NextGenAds {
     }
 
     val appContext = context.applicationContext
-    CoroutineScope(Dispatchers.IO).launch {
-      log("Initializing Google Mobile Ads Next-Gen SDK with App ID: $appId")
+    log("Initializing Google Mobile Ads Next-Gen SDK with App ID: $appId")
 
-      val initConfig = InitializationConfig.Builder(appId).build()
+    val initConfig = InitializationConfig.Builder(appId).build()
 
-      MobileAds.initialize(appContext, initConfig) { initStatus ->
-        log("Mobile Ads SDK initialization complete: $initStatus")
-        onComplete?.invoke(initStatus)
-      }
+    MobileAds.initialize(appContext, initConfig) { initStatus ->
+      log("Mobile Ads SDK initialization complete: $initStatus")
+      onComplete?.invoke(initStatus)
+    }
 
-      if (testDeviceIds.isNotEmpty() || ageRestrictedTreatment != null) {
-        setRequestConfiguration(
-          testDeviceIds = testDeviceIds,
-          ageRestrictedTreatment = ageRestrictedTreatment,
-        )
-      }
+    if (testDeviceIds.isNotEmpty() || ageRestrictedTreatment != null) {
+      setRequestConfiguration(
+        testDeviceIds = testDeviceIds,
+        ageRestrictedTreatment = ageRestrictedTreatment,
+      )
     }
   }
 

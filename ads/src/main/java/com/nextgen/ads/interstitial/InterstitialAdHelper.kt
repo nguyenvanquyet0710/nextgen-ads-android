@@ -49,33 +49,41 @@ object InterstitialAdHelper {
   ) {
     val config = preloadConfig ?: PreloadConfiguration(AdRequest.Builder(adUnitId).build())
 
-    InterstitialAdPreloader.start(
-      adUnitId,
-      config,
-      object : PreloadCallback {
-        override fun onAdPreloaded(preloadId: String, responseInfo: ResponseInfo) {
-          NextGenAds.log("Interstitial ad preloaded for id: $preloadId")
-          listener?.onAdPreloaded(preloadId, responseInfo)
-        }
+    try {
+      InterstitialAdPreloader.start(
+        adUnitId,
+        config,
+        object : PreloadCallback {
+          override fun onAdPreloaded(preloadId: String, responseInfo: ResponseInfo) {
+            NextGenAds.log("Interstitial ad preloaded for id: $preloadId")
+            listener?.onAdPreloaded(preloadId, responseInfo)
+          }
 
-        override fun onAdFailedToPreload(preloadId: String, adError: LoadAdError) {
-          NextGenAds.logError("Interstitial ad failed to preload ($preloadId): ${adError.message}")
-          listener?.onAdFailedToPreload(preloadId, adError)
-        }
+          override fun onAdFailedToPreload(preloadId: String, adError: LoadAdError) {
+            NextGenAds.logError("Interstitial ad failed to preload ($preloadId): ${adError.message}")
+            listener?.onAdFailedToPreload(preloadId, adError)
+          }
 
-        override fun onAdsExhausted(preloadId: String) {
-          NextGenAds.log("Interstitial ads exhausted for id: $preloadId")
-          listener?.onAdsExhausted(preloadId)
-        }
-      },
-    )
+          override fun onAdsExhausted(preloadId: String) {
+            NextGenAds.log("Interstitial ads exhausted for id: $preloadId")
+            listener?.onAdsExhausted(preloadId)
+          }
+        },
+      )
+    } catch (e: Exception) {
+      NextGenAds.logError("Failed to start Interstitial Preloader. Ensure NextGenAds.initialize(...) is called: ${e.message}", e)
+    }
   }
 
   /**
    * Checks whether a preloaded Interstitial Ad is available to show.
    */
   fun isPreloadedAdAvailable(adUnitId: String): Boolean {
-    return InterstitialAdPreloader.isAdAvailable(adUnitId)
+    return try {
+      InterstitialAdPreloader.isAdAvailable(adUnitId)
+    } catch (e: Exception) {
+      false
+    }
   }
 
   /**
@@ -88,7 +96,12 @@ object InterstitialAdHelper {
     adUnitId: String,
     callback: AdEventListener? = null,
   ): Boolean {
-    val ad = InterstitialAdPreloader.pollAd(adUnitId) ?: return false
+    val ad = try {
+      InterstitialAdPreloader.pollAd(adUnitId)
+    } catch (e: Exception) {
+      null
+    } ?: return false
+
     show(activity, ad, callback)
     return true
   }
@@ -103,20 +116,24 @@ object InterstitialAdHelper {
     callback: (ad: InterstitialAd?, error: LoadAdError?) -> Unit,
   ) {
     val adRequest = AdRequest.Builder(adUnitId).build()
-    InterstitialAd.load(
-      adRequest,
-      object : AdLoadCallback<InterstitialAd> {
-        override fun onAdLoaded(ad: InterstitialAd) {
-          NextGenAds.log("Interstitial ad loaded for: $adUnitId")
-          callback(ad, null)
-        }
+    try {
+      InterstitialAd.load(
+        adRequest,
+        object : AdLoadCallback<InterstitialAd> {
+          override fun onAdLoaded(ad: InterstitialAd) {
+            NextGenAds.log("Interstitial ad loaded for: $adUnitId")
+            callback(ad, null)
+          }
 
-        override fun onAdFailedToLoad(adError: LoadAdError) {
-          NextGenAds.logError("Interstitial ad failed to load ($adUnitId): ${adError.message}")
-          callback(null, adError)
-        }
-      },
-    )
+          override fun onAdFailedToLoad(adError: LoadAdError) {
+            NextGenAds.logError("Interstitial ad failed to load ($adUnitId): ${adError.message}")
+            callback(null, adError)
+          }
+        },
+      )
+    } catch (e: Exception) {
+      NextGenAds.logError("Failed to load Interstitial Ad. Ensure NextGenAds.initialize(...) is called: ${e.message}", e)
+    }
   }
 
   /**
