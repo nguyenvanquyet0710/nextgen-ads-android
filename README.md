@@ -62,26 +62,19 @@ dependencies {
 
 ---
 
-## ⚙️ 2. Cấu hình `AndroidManifest.xml`
+## ⚡ 2. Cấu hình App ID (Không cần AndroidManifest.xml)
 
-Thêm App ID AdMob vào trong thẻ `<application>`:
+> [!NOTE]
+> **Điểm cải tiến vượt trội của Next-Gen SDK:** Bạn **KHÔNG CẦN** khai báo thẻ `<meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" ... />` trong `AndroidManifest.xml` như SDK cũ nữa!
+> 
+> App ID được truyền trực tiếp linh hoạt qua mã nguồn Kotlin trong hàm `NextGenAds.initialize(context, appId)`:
+> ```kotlin
+> NextGenAds.initialize(
+>     context = this,
+>     appId = "ca-app-pub-3940256099942544~3347511713" // App ID của bạn
+> )
+> ```
 
-```xml
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application
-        android:name=".MyApplication"
-        android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
-        android:theme="@style/Theme.App">
-
-        <!-- Sample AdMob App ID hoặc App ID thực tế của bạn -->
-        <meta-data
-            android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713"/>
-
-    </application>
-</manifest>
-```
 
 ---
 

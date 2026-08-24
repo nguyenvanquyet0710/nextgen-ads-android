@@ -28,6 +28,7 @@ import com.google.android.libraries.ads.mobile.sdk.common.ResponseInfo
 import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAd
 import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAdEventCallback
 import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAdPreloader
+import com.nextgen.ads.AdFormat
 import com.nextgen.ads.NextGenAds
 import com.nextgen.ads.callbacks.AdEventListener
 import com.nextgen.ads.callbacks.AdPreloadListener
@@ -47,11 +48,12 @@ object InterstitialAdHelper {
     preloadConfig: PreloadConfiguration? = null,
     listener: AdPreloadListener? = null,
   ) {
-    val config = preloadConfig ?: PreloadConfiguration(AdRequest.Builder(adUnitId).build())
+    val resolvedAdUnitId = NextGenAds.resolveAdUnitId(adUnitId, AdFormat.INTERSTITIAL)
+    val config = preloadConfig ?: PreloadConfiguration(AdRequest.Builder(resolvedAdUnitId).build())
 
     try {
       InterstitialAdPreloader.start(
-        adUnitId,
+        resolvedAdUnitId,
         config,
         object : PreloadCallback {
           override fun onAdPreloaded(preloadId: String, responseInfo: ResponseInfo) {
@@ -124,6 +126,10 @@ object InterstitialAdHelper {
     callback: AdEventListener? = null,
     onComplete: (() -> Unit)? = null,
   ) {
+    if (!NextGenAds.adConfig.isAdsEnabled) {
+      onComplete?.invoke()
+      return
+    }
     NextGenAds.runOnMainThread {
       if (!isPreloadedAdAvailable(adUnitId)) {
         onComplete?.invoke()
@@ -183,6 +189,10 @@ object InterstitialAdHelper {
     callback: AdEventListener? = null,
     onComplete: (() -> Unit)? = null,
   ) {
+    if (!NextGenAds.adConfig.isAdsEnabled) {
+      onComplete?.invoke()
+      return
+    }
     NextGenAds.runOnMainThread {
       val dialog = com.nextgen.ads.dialogs.AdLoadingDialog(activity, loadingMessage)
       dialog.show()
@@ -237,7 +247,8 @@ object InterstitialAdHelper {
     adUnitId: String,
     callback: (ad: InterstitialAd?, error: LoadAdError?) -> Unit,
   ) {
-    val adRequest = AdRequest.Builder(adUnitId).build()
+    val resolvedAdUnitId = NextGenAds.resolveAdUnitId(adUnitId, AdFormat.INTERSTITIAL)
+    val adRequest = AdRequest.Builder(resolvedAdUnitId).build()
     try {
       InterstitialAd.load(
         adRequest,

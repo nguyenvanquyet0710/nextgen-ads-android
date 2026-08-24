@@ -30,6 +30,7 @@ import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardItem
 import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardedAd
 import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardedAdEventCallback
 import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardedAdPreloader
+import com.nextgen.ads.AdFormat
 import com.nextgen.ads.NextGenAds
 import com.nextgen.ads.callbacks.AdEventListener
 import com.nextgen.ads.callbacks.AdPreloadListener
@@ -49,11 +50,12 @@ object RewardedAdHelper {
     preloadConfig: PreloadConfiguration? = null,
     listener: AdPreloadListener? = null,
   ) {
-    val config = preloadConfig ?: PreloadConfiguration(AdRequest.Builder(adUnitId).build())
+    val resolvedAdUnitId = NextGenAds.resolveAdUnitId(adUnitId, AdFormat.REWARDED)
+    val config = preloadConfig ?: PreloadConfiguration(AdRequest.Builder(resolvedAdUnitId).build())
 
     try {
       RewardedAdPreloader.start(
-        adUnitId,
+        resolvedAdUnitId,
         config,
         object : PreloadCallback {
           override fun onAdPreloaded(preloadId: String, responseInfo: ResponseInfo) {
@@ -121,6 +123,10 @@ object RewardedAdHelper {
     onUserEarnedReward: (RewardItem) -> Unit,
     onComplete: (() -> Unit)? = null,
   ) {
+    if (!NextGenAds.adConfig.isAdsEnabled) {
+      onComplete?.invoke()
+      return
+    }
     NextGenAds.runOnMainThread {
       if (!isPreloadedAdAvailable(adUnitId)) {
         onComplete?.invoke()
@@ -180,7 +186,8 @@ object RewardedAdHelper {
     adUnitId: String,
     callback: (ad: RewardedAd?, error: LoadAdError?) -> Unit,
   ) {
-    val adRequest = AdRequest.Builder(adUnitId).build()
+    val resolvedAdUnitId = NextGenAds.resolveAdUnitId(adUnitId, AdFormat.REWARDED)
+    val adRequest = AdRequest.Builder(resolvedAdUnitId).build()
     try {
       RewardedAd.load(
         adRequest,
@@ -212,6 +219,10 @@ object RewardedAdHelper {
     onUserEarnedReward: (RewardItem) -> Unit,
     onComplete: (() -> Unit)? = null,
   ) {
+    if (!NextGenAds.adConfig.isAdsEnabled) {
+      onComplete?.invoke()
+      return
+    }
     NextGenAds.runOnMainThread {
       val dialog = com.nextgen.ads.dialogs.AdLoadingDialog(activity, loadingMessage)
       dialog.show()

@@ -29,6 +29,38 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
+ * Ad format types for resolving test/live ad unit IDs.
+ */
+enum class AdFormat {
+  BANNER, INTERSTITIAL, REWARDED, REWARDED_INTERSTITIAL, NATIVE, APP_OPEN
+}
+
+/**
+ * Google's official sample test Ad Unit IDs.
+ */
+object TestAdUnitIds {
+  const val BANNER = "ca-app-pub-3940256099942544/9214589741"
+  const val INTERSTITIAL = "ca-app-pub-3940256099942544/1033173712"
+  const val REWARDED = "ca-app-pub-3940256099942544/5224354917"
+  const val REWARDED_INTERSTITIAL = "ca-app-pub-3940256099942544/5354046379"
+  const val NATIVE = "ca-app-pub-3940256099942544/2247696110"
+  const val APP_OPEN = "ca-app-pub-3940256099942544/9257395921"
+}
+
+/**
+ * Global ad configuration.
+ *
+ * @param isTestMode When true, all ad unit IDs are automatically replaced with Google's sample test IDs.
+ * @param isAdsEnabled When false, all ad loading/showing is suppressed (useful for premium users).
+ * @param isDebug When true, enables verbose logging via NextGenAds.log().
+ */
+data class AdConfig(
+  val isTestMode: Boolean = false,
+  val isAdsEnabled: Boolean = true,
+  val isDebug: Boolean = false,
+)
+
+/**
  * Main entry point for initializing and configuring Google Mobile Ads Next-Gen SDK.
  */
 object NextGenAds {
@@ -36,6 +68,13 @@ object NextGenAds {
 
   // Google sample AdMob App ID
   const val SAMPLE_APP_ID = "ca-app-pub-3940256099942544~3347511713"
+
+  /** Global ad configuration. Set this in Application.onCreate() before any ad calls. */
+  var adConfig: AdConfig = AdConfig()
+    set(value) {
+      field = value
+      isDebug = value.isDebug
+    }
 
   private val isInitializedFlag = AtomicBoolean(false)
   private val isInitializingFlag = AtomicBoolean(false)
@@ -60,6 +99,29 @@ object NextGenAds {
 
   val isInitialized: Boolean
     get() = isInitializedFlag.get()
+
+  /**
+   * Resolves the ad unit ID based on current [adConfig].
+   * Returns the Google sample test ID if [AdConfig.isTestMode] is true.
+   */
+  fun resolveAdUnitId(realAdUnitId: String, format: AdFormat): String {
+    if (!adConfig.isTestMode) return realAdUnitId
+    return when (format) {
+      AdFormat.BANNER -> TestAdUnitIds.BANNER
+      AdFormat.INTERSTITIAL -> TestAdUnitIds.INTERSTITIAL
+      AdFormat.REWARDED -> TestAdUnitIds.REWARDED
+      AdFormat.REWARDED_INTERSTITIAL -> TestAdUnitIds.REWARDED_INTERSTITIAL
+      AdFormat.NATIVE -> TestAdUnitIds.NATIVE
+      AdFormat.APP_OPEN -> TestAdUnitIds.APP_OPEN
+    }
+  }
+
+  /**
+   * Checks whether the given ad unit ID is a Google sample test ID.
+   */
+  fun isTestAdUnitId(adUnitId: String): Boolean {
+    return adUnitId.startsWith("ca-app-pub-3940256099942544")
+  }
 
   /**
    * Initializes the Google Mobile Ads Next-Gen SDK.

@@ -29,6 +29,7 @@ import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardItem
 import com.google.android.libraries.ads.mobile.sdk.rewardedinterstitial.RewardedInterstitialAd
 import com.google.android.libraries.ads.mobile.sdk.rewardedinterstitial.RewardedInterstitialAdEventCallback
 import com.google.android.libraries.ads.mobile.sdk.rewardedinterstitial.RewardedInterstitialAdPreloader
+import com.nextgen.ads.AdFormat
 import com.nextgen.ads.NextGenAds
 import com.nextgen.ads.callbacks.AdEventListener
 import com.nextgen.ads.callbacks.AdPreloadListener
@@ -48,11 +49,12 @@ object RewardedInterstitialHelper {
     preloadConfig: PreloadConfiguration? = null,
     listener: AdPreloadListener? = null,
   ) {
-    val config = preloadConfig ?: PreloadConfiguration(AdRequest.Builder(adUnitId).build())
+    val resolvedAdUnitId = NextGenAds.resolveAdUnitId(adUnitId, AdFormat.REWARDED_INTERSTITIAL)
+    val config = preloadConfig ?: PreloadConfiguration(AdRequest.Builder(resolvedAdUnitId).build())
 
     try {
       RewardedInterstitialAdPreloader.start(
-        adUnitId,
+        resolvedAdUnitId,
         config,
         object : PreloadCallback {
           override fun onAdPreloaded(preloadId: String, responseInfo: ResponseInfo) {
@@ -118,6 +120,10 @@ object RewardedInterstitialHelper {
     onUserEarnedReward: (RewardItem) -> Unit,
     onComplete: (() -> Unit)? = null,
   ) {
+    if (!NextGenAds.adConfig.isAdsEnabled) {
+      onComplete?.invoke()
+      return
+    }
     NextGenAds.runOnMainThread {
       if (!isPreloadedAdAvailable(adUnitId)) {
         onComplete?.invoke()
@@ -188,7 +194,8 @@ object RewardedInterstitialHelper {
     adUnitId: String,
     callback: (ad: RewardedInterstitialAd?, error: LoadAdError?) -> Unit,
   ) {
-    val adRequest = AdRequest.Builder(adUnitId).build()
+    val resolvedAdUnitId = NextGenAds.resolveAdUnitId(adUnitId, AdFormat.REWARDED_INTERSTITIAL)
+    val adRequest = AdRequest.Builder(resolvedAdUnitId).build()
     try {
       RewardedInterstitialAd.load(
         adRequest,
@@ -220,6 +227,10 @@ object RewardedInterstitialHelper {
     onUserEarnedReward: (RewardItem) -> Unit,
     onComplete: (() -> Unit)? = null,
   ) {
+    if (!NextGenAds.adConfig.isAdsEnabled) {
+      onComplete?.invoke()
+      return
+    }
     NextGenAds.runOnMainThread {
       val dialog = com.nextgen.ads.dialogs.AdLoadingDialog(activity, loadingMessage)
       dialog.show()

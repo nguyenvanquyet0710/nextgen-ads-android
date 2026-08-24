@@ -17,6 +17,10 @@
 package com.nextgen.ads.banner
 
 import android.content.Context
+import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import androidx.annotation.LayoutRes
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import com.google.android.libraries.ads.mobile.sdk.banner.AdSize
@@ -27,8 +31,10 @@ import com.google.android.libraries.ads.mobile.sdk.banner.BannerAdRefreshCallbac
 import com.google.android.libraries.ads.mobile.sdk.banner.BannerAdRequest
 import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
 import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
+import com.nextgen.ads.AdFormat
 import com.nextgen.ads.NextGenAds
 import com.nextgen.ads.callbacks.AdEventListener
+import com.nextgen.ads.shimmer.AdShimmerView
 
 /**
  * Utility helper for managing Banner Ads in Next-Gen GMA SDK.
@@ -83,13 +89,14 @@ object BannerAdHelper {
     isLarge: Boolean = false,
     callback: AdEventListener? = null,
   ) {
+    val resolvedAdUnitId = NextGenAds.resolveAdUnitId(adUnitId, AdFormat.BANNER)
     val context = adView.context
     val adSize = if (isLarge) {
       getLargeAnchoredAdaptiveBannerAdSize(context)
     } else {
       getAdaptiveBannerAdSize(context)
     }
-    loadBanner(adView, adUnitId, adSize, lifecycleOwner, callback)
+    loadBanner(adView, resolvedAdUnitId, adSize, lifecycleOwner, callback)
   }
 
   /**
@@ -102,15 +109,16 @@ object BannerAdHelper {
     lifecycleOwner: LifecycleOwner? = null,
     callback: AdEventListener? = null,
   ) {
+    val resolvedAdUnitId = NextGenAds.resolveAdUnitId(adUnitId, AdFormat.BANNER)
     lifecycleOwner?.let { bindLifecycle(adView, it) }
 
     try {
-      val bannerAdRequest = BannerAdRequest.Builder(adUnitId, adSize).build()
+      val bannerAdRequest = BannerAdRequest.Builder(resolvedAdUnitId, adSize).build()
       adView.loadAd(
         bannerAdRequest,
         object : AdLoadCallback<BannerAd> {
           override fun onAdLoaded(ad: BannerAd) {
-            NextGenAds.log("Banner ad loaded for unit: $adUnitId")
+            NextGenAds.log("Banner ad loaded for unit: $resolvedAdUnitId")
 
             ad.adEventCallback = object : BannerAdEventCallback {
               override fun onAdImpression() {
@@ -164,5 +172,123 @@ object BannerAdHelper {
         owner.lifecycle.removeObserver(this)
       }
     })
+  }
+
+  /**
+   * Loads and displays a Banner Ad into a plain [FrameLayout].
+   * Automatically creates AdView, shows shimmer loading, and crossfades to the real ad.
+   *
+   * Usage in XML: just use `<FrameLayout android:id="@+id/fl_banner" .../>`
+   * Usage in Kotlin: `BannerAdHelper.loadInto(binding.flBanner, "ad-unit-id", this)`
+   *
+   * @param container The FrameLayout on your layout.
+   * @param adUnitId The AdMob Banner Ad Unit ID.
+   * @param lifecycleOwner Automatically destroys AdView when Activity/Fragment is destroyed.
+   * @param showShimmer Show shimmer loading placeholder while ad is loading (default: true).
+   * @param shimmerLayoutResId Custom shimmer layout resource (null = use default banner shimmer).
+   * @param isLarge Use large anchored adaptive banner size (default: false).
+   * @param callback Ad lifecycle event listener.
+   */
+  fun loadInto(
+    container: FrameLayout,
+    adUnitId: String,
+    lifecycleOwner: LifecycleOwner? = null,
+    showShimmer: Boolean = true,
+    @LayoutRes shimmerLayoutResId: Int? = null,
+    isLarge: Boolean = false,
+    callback: AdEventListener? = null,
+  ) {
+    // 1. Check if ads are enabled
+    if (!NextGenAds.adConfig.isAdsEnabled) {
+      container.visibility = View.GONE
+      return
+    }
+
+    // 2. Resolve test/live ad unit ID
+    val resolvedAdUnitId = NextGenAds.resolveAdUnitId(adUnitId, AdFormat.BANNER)
+    NextGenAds.log("BannerAdHelper.loadInto: resolved=$resolvedAdUnitId (test=${NextGenAds.adConfig.isTestMode})")
+
+    // 3. Show shimmer loading placeholder
+    container.removeAllViews()
+    if (showShimmer) {
+      if (shimmerLayoutResId != null) {
+        AdShimmerView.showCustomShimmer(container, shimmerLayoutResId)
+      } else {
+        AdShimmerView.showBannerShimmer(container)
+      }
+    }
+    container.visibility = View.VISIBLE
+
+    // 4. Create AdView programmatically
+    val context = container.context
+    val adView = AdView(context)
+    adView.layoutParams = FrameLayout.LayoutParams(
+      FrameLayout.LayoutParams.MATCH_PARENT,
+      FrameLayout.LayoutParams.WRAP_CONTENT
+    )
+
+    // 5. Bind lifecycle
+    lifecycleOwner?.let { bindLifecycle(adView, it) }
+
+    // 6. Calculate ad size
+    val adSize = if (isLarge) {
+      getLargeAnchoredAdaptiveBannerAdSize(context)
+    } else {
+      getAdaptiveBannerAdSize(context)
+    }
+
+    // 7. Load banner
+    try {
+      val bannerAdRequest = BannerAdRequest.Builder(resolvedAdUnitId, adSize).build()
+      adView.loadAd(
+        bannerAdRequest,
+        object : AdLoadCallback<BannerAd> {
+          override fun onAdLoaded(ad: BannerAd) {
+            NextGenAds.log("Banner ad loaded into FrameLayout for: $resolvedAdUnitId")
+
+            ad.adEventCallback = object : BannerAdEventCallback {
+              override fun onAdImpression() {
+                NextGenAds.log("Banner ad impression recorded.")
+                NextGenAds.runOnMainThread { callback?.onAdImpression() }
+              }
+
+              override fun onAdClicked() {
+                NextGenAds.log("Banner ad clicked.")
+                NextGenAds.runOnMainThread { callback?.onAdClicked() }
+              }
+            }
+
+            ad.bannerAdRefreshCallback = object : BannerAdRefreshCallback {
+              override fun onAdRefreshed() {
+                NextGenAds.log("Banner ad refreshed.")
+                NextGenAds.runOnMainThread { callback?.onAdRefreshed() }
+              }
+
+              override fun onAdFailedToRefresh(adError: LoadAdError) {
+                NextGenAds.logError("Banner ad failed to refresh: ${adError.message}")
+                NextGenAds.runOnMainThread { callback?.onAdFailedToRefresh(adError) }
+              }
+            }
+
+            // Replace shimmer with the real ad (crossfade animation)
+            NextGenAds.runOnMainThread {
+              AdShimmerView.replaceShimmerWithAd(container, adView)
+              callback?.onAdLoaded()
+            }
+          }
+
+          override fun onAdFailedToLoad(adError: LoadAdError) {
+            NextGenAds.logError("Banner ad failed to load into FrameLayout: ${adError.message}")
+            NextGenAds.runOnMainThread {
+              AdShimmerView.removeShimmerAndHide(container)
+              callback?.onAdFailedToLoad(adError)
+            }
+          }
+        },
+      )
+    } catch (e: Exception) {
+      NextGenAds.logError("Failed to load Banner ad into FrameLayout: ${e.message}", e)
+      AdShimmerView.removeShimmerAndHide(container)
+    }
   }
 }

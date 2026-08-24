@@ -29,6 +29,7 @@ import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
 import com.google.android.libraries.ads.mobile.sdk.common.AdRequest
 import com.google.android.libraries.ads.mobile.sdk.common.FullScreenContentError
 import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
+import com.nextgen.ads.AdFormat
 import com.nextgen.ads.NextGenAds
 import com.nextgen.ads.callbacks.AdEventListener
 import com.nextgen.ads.callbacks.OnShowAdCompleteListener
@@ -132,7 +133,8 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
 
     try {
       isLoadingAd = true
-      val adRequest = AdRequest.Builder(unitId).build()
+      val resolvedAdUnitId = NextGenAds.resolveAdUnitId(unitId, AdFormat.APP_OPEN)
+      val adRequest = AdRequest.Builder(resolvedAdUnitId).build()
       AppOpenAd.load(
         adRequest,
         object : AdLoadCallback<AppOpenAd> {
@@ -178,6 +180,10 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
     timeoutMs: Long = 4000L,
     onComplete: () -> Unit,
   ) {
+    if (!NextGenAds.adConfig.isAdsEnabled) {
+      onComplete()
+      return
+    }
     if (activity.isFinishing || activity.isDestroyed) {
       onComplete()
       return
