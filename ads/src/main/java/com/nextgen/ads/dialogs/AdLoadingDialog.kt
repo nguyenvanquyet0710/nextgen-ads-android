@@ -19,10 +19,8 @@ package com.nextgen.ads.dialogs
 import android.app.Activity
 import android.app.Dialog
 import android.content.res.ColorStateList
-import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.util.TypedValue
 import android.view.Gravity
@@ -35,7 +33,8 @@ import android.widget.TextView
 import com.nextgen.ads.NextGenAds
 
 /**
- * Premium, modern loading dialog shown smoothly before presenting full-screen ads.
+ * Full-screen loading dialog shown before interstitial / rewarded / rewarded interstitial ads.
+ * White full-bleed background with a centered spinner and message (e.g. "Loading...").
  */
 class AdLoadingDialog(
   private val activity: Activity,
@@ -50,74 +49,67 @@ class AdLoadingDialog(
       try {
         if (dialog?.isShowing == true) return@runOnMainThread
 
-        dialog = Dialog(activity).apply {
+        dialog = Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen).apply {
           requestWindowFeature(Window.FEATURE_NO_TITLE)
           setCancelable(false)
           setCanceledOnTouchOutside(false)
 
           window?.apply {
-            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            setBackgroundDrawable(ColorDrawable(Color.WHITE))
+            setLayout(
+              ViewGroup.LayoutParams.MATCH_PARENT,
+              ViewGroup.LayoutParams.MATCH_PARENT,
+            )
             clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            setDimAmount(0.35f)
+            // Draw under status/nav bars for a true full-screen look
+            addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+              statusBarColor = Color.WHITE
+              navigationBarColor = Color.WHITE
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+              decorView.systemUiVisibility =
+                decorView.systemUiVisibility or
+                  android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            }
           }
-
-          val isNightMode = (activity.resources.configuration.uiMode and
-            Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
           val density = activity.resources.displayMetrics.density
 
-          // Container Card
-          val cardLayout = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+          val content = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.WHITE)
+            layoutParams = ViewGroup.LayoutParams(
+              ViewGroup.LayoutParams.MATCH_PARENT,
+              ViewGroup.LayoutParams.MATCH_PARENT,
+            )
 
-            val padH = (22 * density).toInt()
-            val padV = (16 * density).toInt()
-            setPadding(padH, padV, padH, padV)
-
-            val bgCardColor = if (isNightMode) Color.parseColor("#282828") else Color.parseColor("#FFFFFF")
-            val cardShape = GradientDrawable().apply {
-              setColor(bgCardColor)
-              cornerRadius = 16 * density
-              if (!isNightMode) {
-                setStroke((1 * density).toInt(), Color.parseColor("#E0E0E0"))
-              }
-            }
-            background = cardShape
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-              elevation = 12 * density
-            }
-
-            // Material Google Blue ProgressBar
+            val progressSize = (48 * density).toInt()
             val progressBar = ProgressBar(activity).apply {
-              val size = (28 * density).toInt()
-              layoutParams = LinearLayout.LayoutParams(size, size).apply {
-                marginEnd = (14 * density).toInt()
-              }
-              val accentColor = Color.parseColor("#1A73E8") // Google Material Blue
+              layoutParams = LinearLayout.LayoutParams(progressSize, progressSize)
               if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                indeterminateTintList = ColorStateList.valueOf(accentColor)
+                indeterminateTintList = ColorStateList.valueOf(Color.BLACK)
               }
             }
             addView(progressBar)
 
-            // Crisp Typography
-            val textColor = if (isNightMode) Color.parseColor("#F1F3F4") else Color.parseColor("#202124")
             val textView = TextView(activity).apply {
               text = message
-              setTextColor(textColor)
-              setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-              letterSpacing = 0.01f
+              setTextColor(Color.BLACK)
+              setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+              gravity = Gravity.CENTER
               layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-              )
+              ).apply {
+                topMargin = (16 * density).toInt()
+              }
             }
             addView(textView)
           }
 
-          setContentView(cardLayout)
+          setContentView(content)
           show()
         }
       } catch (e: Exception) {

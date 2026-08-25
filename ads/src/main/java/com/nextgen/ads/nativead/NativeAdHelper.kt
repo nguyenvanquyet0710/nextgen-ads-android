@@ -314,7 +314,8 @@ object NativeAdHelper {
    * @param layoutResId Resource ID of your custom native ad layout XML (root must be NativeAdView).
    * @param lifecycleOwner Automatically destroys native ad when Activity/Fragment is destroyed.
    * @param showShimmer Show shimmer loading placeholder while ad is loading (default: true).
-   * @param shimmerLayoutResId Custom shimmer layout resource (null = use default native medium shimmer).
+   * @param shimmerLayoutResId Optional dedicated shimmer layout. When null, shimmer is built
+   * from [layoutResId] so size/structure match your native template (small/medium/fullscreen…).
    * @param startMuted Whether native ad video starts muted (default: true).
    * @param callback Ad lifecycle event listener.
    */
@@ -338,14 +339,10 @@ object NativeAdHelper {
     val resolvedAdUnitId = NextGenAds.resolveAdUnitId(adUnitId, AdFormat.NATIVE)
     NextGenAds.log("NativeAdHelper.loadInto: resolved=$resolvedAdUnitId (test=${NextGenAds.adConfig.isTestMode})")
 
-    // 3. Show shimmer loading placeholder
+    // 3. Show shimmer matching the native template size/structure
     container.removeAllViews()
     if (showShimmer) {
-      if (shimmerLayoutResId != null) {
-        AdShimmerView.showCustomShimmer(container, shimmerLayoutResId)
-      } else {
-        AdShimmerView.showNativeMediumShimmer(container)
-      }
+      showNativeShimmer(container, layoutResId, shimmerLayoutResId)
     }
     container.visibility = View.VISIBLE
 
@@ -407,7 +404,8 @@ object NativeAdHelper {
    * @param collapsedHeightDp Height in dp after collapsing (default: 60dp).
    * @param lifecycleOwner Automatically destroys native ad when Activity/Fragment is destroyed.
    * @param showShimmer Show shimmer loading placeholder while ad is loading.
-   * @param shimmerLayoutResId Custom shimmer layout resource.
+   * @param shimmerLayoutResId Optional dedicated shimmer layout. When null, shimmer is built
+   * from [layoutResId] so size/structure match your collapsible template.
    * @param callback Ad lifecycle event listener.
    */
   fun loadCollapsibleInto(
@@ -430,14 +428,10 @@ object NativeAdHelper {
     val resolvedAdUnitId = NextGenAds.resolveAdUnitId(adUnitId, AdFormat.NATIVE)
     NextGenAds.log("NativeAdHelper.loadCollapsibleInto: resolved=$resolvedAdUnitId")
 
-    // 3. Show shimmer
+    // 3. Show shimmer matching the native template size/structure
     container.removeAllViews()
     if (showShimmer) {
-      if (shimmerLayoutResId != null) {
-        AdShimmerView.showCustomShimmer(container, shimmerLayoutResId)
-      } else {
-        AdShimmerView.showNativeMediumShimmer(container)
-      }
+      showNativeShimmer(container, layoutResId, shimmerLayoutResId)
     }
     container.visibility = View.VISIBLE
 
@@ -497,6 +491,23 @@ object NativeAdHelper {
           error?.let { callback?.onAdFailedToLoad(it) }
         }
       }
+    }
+  }
+
+  /**
+   * Shows shimmer for native ads.
+   * Prefer a dedicated [shimmerLayoutResId] when provided; otherwise inflate [layoutResId]
+   * as a skeleton so placeholder size matches the real template.
+   */
+  private fun showNativeShimmer(
+    container: FrameLayout,
+    @LayoutRes layoutResId: Int,
+    @LayoutRes shimmerLayoutResId: Int?,
+  ) {
+    if (shimmerLayoutResId != null) {
+      AdShimmerView.showCustomShimmer(container, shimmerLayoutResId)
+    } else {
+      AdShimmerView.showNativeShimmerFromLayout(container, layoutResId)
     }
   }
 

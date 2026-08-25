@@ -16,13 +16,18 @@
 
 package com.nextgen.ads.shimmer
 
-import android.content.Context
+import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AlphaAnimation
 import android.widget.FrameLayout
+import android.widget.ImageView
+import android.widget.RatingBar
+import android.widget.TextView
 import androidx.annotation.LayoutRes
+import androidx.core.content.ContextCompat
+import com.facebook.shimmer.ShimmerFrameLayout
 import com.nextgen.ads.R
 
 /**
@@ -31,6 +36,8 @@ import com.nextgen.ads.R
  * preventing jarring pop-in effects.
  */
 object AdShimmerView {
+
+  private const val SHIMMER_TAG = "nextgen_shimmer"
 
   /**
    * Creates and adds a shimmer placeholder for Banner ads into the given [container].
@@ -65,15 +72,130 @@ object AdShimmerView {
   }
 
   /**
+   * Inflates [layoutResId] (your native ad template) as a skeleton shimmer so the
+   * placeholder matches the real ad size and structure (small / medium / fullscreen / etc.).
+   *
+   * Text, image, media, and button views are converted into gray placeholders;
+   * the root layout width/height from XML are preserved.
+   */
+  fun showNativeShimmerFromLayout(container: FrameLayout, @LayoutRes layoutResId: Int): View {
+    container.visibility = View.VISIBLE
+    val context = container.context
+    val inflater = LayoutInflater.from(context)
+
+    val skeleton = inflater.inflate(layoutResId, container, false)
+    applySkeletonStyle(skeleton)
+
+    val width = skeleton.layoutParams?.width ?: ViewGroup.LayoutParams.MATCH_PARENT
+    val height = skeleton.layoutParams?.height ?: ViewGroup.LayoutParams.WRAP_CONTENT
+
+    val shimmer = ShimmerFrameLayout(context).apply {
+      layoutParams = FrameLayout.LayoutParams(width, height)
+      tag = SHIMMER_TAG
+      setShimmer(
+        com.facebook.shimmer.Shimmer.AlphaHighlightBuilder()
+          .setDuration(1200L)
+          .setBaseAlpha(0.7f)
+          .setHighlightAlpha(1f)
+          .setAutoStart(true)
+          .build()
+      )
+    }
+
+    // Keep skeleton matching parent of ShimmerFrameLayout
+    skeleton.layoutParams = FrameLayout.LayoutParams(
+      ViewGroup.LayoutParams.MATCH_PARENT,
+      if (height == ViewGroup.LayoutParams.MATCH_PARENT) {
+        ViewGroup.LayoutParams.MATCH_PARENT
+      } else {
+        ViewGroup.LayoutParams.WRAP_CONTENT
+      },
+    )
+    shimmer.addView(skeleton)
+    shimmer.startShimmer()
+    container.addView(shimmer)
+    return shimmer
+  }
+
+  /**
    * Inflates and adds a shimmer layout into the container.
    */
   private fun showShimmer(container: FrameLayout, @LayoutRes layoutResId: Int): View {
     container.visibility = View.VISIBLE
     val inflater = LayoutInflater.from(container.context)
     val shimmerView = inflater.inflate(layoutResId, container, false)
-    shimmerView.tag = "nextgen_shimmer"
+    shimmerView.tag = SHIMMER_TAG
     container.addView(shimmerView)
     return shimmerView
+  }
+
+  /**
+   * Turns the inflated native template into a non-interactive skeleton for shimmer.
+   */
+  private fun applySkeletonStyle(root: View) {
+    root.isClickable = false
+    root.isFocusable = false
+    styleViewRecursive(root)
+  }
+
+  private fun styleViewRecursive(view: View) {
+    when (view) {
+      is RatingBar -> {
+        // Keep reserved space so height matches the real template.
+        view.visibility = View.INVISIBLE
+      }
+      is TextView -> {
+        view.text = ""
+        view.hint = null
+        view.setTextColor(Color.TRANSPARENT)
+        view.setHintTextColor(Color.TRANSPARENT)
+        view.background = ContextCompat.getDrawable(view.context, placeholderFor(view))
+        view.isClickable = false
+        view.isFocusable = false
+      }
+      is ImageView -> {
+        view.setImageDrawable(null)
+        view.background = ContextCompat.getDrawable(view.context, R.drawable.nextgen_shimmer_placeholder)
+        view.isClickable = false
+      }
+      is ViewGroup -> {
+        view.isClickable = false
+        for (i in 0 until view.childCount) {
+          styleViewRecursive(view.getChildAt(i))
+        }
+      }
+      else -> {
+        if (looksLikeMediaView(view)) {
+          view.background = ContextCompat.getDrawable(view.context, R.drawable.nextgen_shimmer_placeholder)
+        }
+        view.isClickable = false
+      }
+    }
+  }
+
+  private fun placeholderFor(view: TextView): Int {
+    // CTA buttons usually look better with a rounder bar.
+    val name = safeResourceEntryName(view)
+    return if (name.contains("call_to_action") || name.contains("cta") || view is android.widget.Button) {
+      R.drawable.nextgen_shimmer_placeholder_round
+    } else {
+      R.drawable.nextgen_shimmer_placeholder
+    }
+  }
+
+  private fun looksLikeMediaView(view: View): Boolean {
+    val simpleName = view.javaClass.simpleName
+    if (simpleName.contains("MediaView", ignoreCase = true)) return true
+    val name = safeResourceEntryName(view)
+    return name.contains("media", ignoreCase = true)
+  }
+
+  private fun safeResourceEntryName(view: View): String {
+    return try {
+      if (view.id == View.NO_ID) "" else view.resources.getResourceEntryName(view.id)
+    } catch (_: Exception) {
+      ""
+    }
   }
 
   /**
@@ -86,7 +208,7 @@ object AdShimmerView {
    */
   fun replaceShimmerWithAd(container: FrameLayout, adView: View, fadeDurationMs: Long = 300L) {
     // Find and remove shimmer
-    val shimmerView = container.findViewWithTag<View>("nextgen_shimmer")
+    val shimmerView = container.findViewWithTag<View>(SHIMMER_TAG)
     if (shimmerView != null) {
       val fadeOut = AlphaAnimation(1f, 0f).apply {
         duration = fadeDurationMs
@@ -97,7 +219,7 @@ object AdShimmerView {
         container.removeView(shimmerView)
         // Stop shimmer if it's a ShimmerFrameLayout
         try {
-          (shimmerView as? com.facebook.shimmer.ShimmerFrameLayout)?.stopShimmer()
+          (shimmerView as? ShimmerFrameLayout)?.stopShimmer()
         } catch (_: Exception) {}
       }, fadeDurationMs)
     }
@@ -119,10 +241,10 @@ object AdShimmerView {
    * Used when ad loading fails.
    */
   fun removeShimmerAndHide(container: FrameLayout) {
-    val shimmerView = container.findViewWithTag<View>("nextgen_shimmer")
+    val shimmerView = container.findViewWithTag<View>(SHIMMER_TAG)
     if (shimmerView != null) {
       try {
-        (shimmerView as? com.facebook.shimmer.ShimmerFrameLayout)?.stopShimmer()
+        (shimmerView as? ShimmerFrameLayout)?.stopShimmer()
       } catch (_: Exception) {}
       container.removeView(shimmerView)
     }

@@ -52,11 +52,10 @@ object BannerAdHelper {
   }
 
   /**
-   * Returns anchored adaptive banner ad size.
+   * Returns standard banner ad size (320x50).
    */
   fun getAdaptiveBannerAdSize(context: Context, widthDp: Int? = null): AdSize {
-    val width = widthDp ?: getScreenWidthDp(context)
-    return AdSize.getLargeAnchoredAdaptiveBannerAdSize(context, width)
+    return AdSize.BANNER
   }
 
   /**
