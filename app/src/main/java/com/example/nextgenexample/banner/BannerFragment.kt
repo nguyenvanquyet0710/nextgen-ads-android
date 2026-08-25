@@ -46,11 +46,8 @@ class BannerFragment : AdFragment<FragmentBannerBinding>() {
 
     adView = binding.adView
 
-    // Get the ad size based on the screen width.
-    val adSize = AdSize.getLargeAnchoredAdaptiveBannerAdSize(requireContext(), adWidth)
-
-    // Load an ad.
-    loadAd(adSize)
+    // Standard 320x50 banner (matches classic sticky bottom banner).
+    loadAd(AdSize.BANNER)
   }
 
   private fun loadAd(adSize: AdSize) {
@@ -92,15 +89,6 @@ class BannerFragment : AdFragment<FragmentBannerBinding>() {
       },
     )
   }
-
-  // Determine the screen width to use for the ad width.
-  private val adWidth: Int
-    get() {
-      val displayMetrics = resources.displayMetrics
-      val adWidthPixels = displayMetrics.widthPixels
-      val density = displayMetrics.density
-      return (adWidthPixels / density).toInt()
-    }
 
   override fun onDestroyView() {
     if (this::adView.isInitialized) {

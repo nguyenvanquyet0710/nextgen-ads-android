@@ -29,6 +29,9 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          # Wrapper jar checksum not yet in known-good list for this Gradle version.
+          validate-wrappers: false
 
       - name: Determine Version
         id: get_version

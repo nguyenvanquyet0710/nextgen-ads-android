@@ -30,7 +30,7 @@ import com.example.nextgenexample.R
 import com.example.nextgenexample.databinding.CustomNativeAdBinding
 import com.example.nextgenexample.databinding.FragmentCustomNativeBinding
 import com.example.nextgenexample.databinding.NativeAdBinding
-import com.google.android.gms.ads.nativead.NativeAdAssetNames
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdAssetNames
 import com.google.android.libraries.ads.mobile.sdk.common.FullScreenContentError
 import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
 import com.google.android.libraries.ads.mobile.sdk.common.VideoController
