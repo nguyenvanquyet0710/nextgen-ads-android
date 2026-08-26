@@ -123,7 +123,7 @@ object RewardedAdHelper {
     onUserEarnedReward: (RewardItem) -> Unit,
     onComplete: (() -> Unit)? = null,
   ) {
-    if (!NextGenAds.adConfig.isAdsEnabled) {
+    if (!NextGenAds.canShowAds(activity)) {
       onComplete?.invoke()
       return
     }
@@ -219,7 +219,7 @@ object RewardedAdHelper {
     onUserEarnedReward: (RewardItem) -> Unit,
     onComplete: (() -> Unit)? = null,
   ) {
-    if (!NextGenAds.adConfig.isAdsEnabled) {
+    if (!NextGenAds.canShowAds(activity)) {
       onComplete?.invoke()
       return
     }

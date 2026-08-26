@@ -16,6 +16,7 @@
 
 package com.nextgen.ads.nativead
 
+import android.app.Activity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -330,7 +331,7 @@ object NativeAdHelper {
     callback: AdEventListener? = null,
   ) {
     // 1. Check if ads are enabled
-    if (!NextGenAds.adConfig.isAdsEnabled) {
+    if (!NextGenAds.canShowAds(container.context)) {
       container.visibility = View.GONE
       return
     }
@@ -419,7 +420,7 @@ object NativeAdHelper {
     callback: AdEventListener? = null,
   ) {
     // 1. Check if ads are enabled
-    if (!NextGenAds.adConfig.isAdsEnabled) {
+    if (!NextGenAds.canShowAds(container.context)) {
       container.visibility = View.GONE
       return
     }
@@ -526,7 +527,7 @@ object NativeAdHelper {
    * - `@+id/ad_store` (TextView)
    * - `@+id/ad_price` (TextView)
    */
-  private fun autoBindViews(adView: NativeAdView) {
+  internal fun autoBindViews(adView: NativeAdView) {
     val res = adView.context.resources
     val pkg = adView.context.packageName
 
@@ -541,5 +542,100 @@ object NativeAdHelper {
     findId("ad_advertiser").takeIf { it != 0 }?.let { adView.advertiserView = adView.findViewById(it) }
     findId("ad_store").takeIf { it != 0 }?.let { adView.storeView = adView.findViewById(it) }
     findId("ad_price").takeIf { it != 0 }?.let { adView.priceView = adView.findViewById(it) }
+  }
+
+  /**
+   * Loads and shows a Native Ad in a fullscreen dialog.
+   * Typically used after an Interstitial ad closes.
+   *
+   * @param activity The current Activity.
+   * @param adUnitId The AdMob Native Ad Unit ID.
+   * @param layoutResId Resource ID of your fullscreen native ad layout XML.
+   * @param onDismiss Called when user closes the fullscreen native ad.
+   */
+  fun showFullScreen(
+    activity: Activity,
+    adUnitId: String,
+    @LayoutRes layoutResId: Int,
+    onDismiss: () -> Unit,
+  ) {
+    if (!NextGenAds.canShowAds(activity)) {
+      onDismiss()
+      return
+    }
+
+    val resolvedAdUnitId = NextGenAds.resolveAdUnitId(adUnitId, AdFormat.NATIVE)
+    NextGenAds.log("NativeAdHelper.showFullScreen: loading native ad...")
+
+    load(resolvedAdUnitId) { nativeAd, error ->
+      if (nativeAd != null) {
+        NextGenAds.runOnMainThread {
+          if (activity.isFinishing || activity.isDestroyed) {
+            nativeAd.destroy()
+            onDismiss()
+            return@runOnMainThread
+          }
+          try {
+            val dialog = NativeFullScreenDialog(activity, nativeAd, layoutResId, onDismiss)
+            dialog.show()
+          } catch (e: Exception) {
+            NextGenAds.logError("showFullScreen: failed to show dialog: ${e.message}", e)
+            nativeAd.destroy()
+            onDismiss()
+          }
+        }
+      } else {
+        NextGenAds.logError("showFullScreen: failed to load native ad: ${error?.message}")
+        NextGenAds.runOnMainThread { onDismiss() }
+      }
+    }
+  }
+
+  /**
+   * Shows a fullscreen native ad using a preloaded ad (from [startPreloader]).
+   * If no preloaded ad is available, falls back to loading a new one.
+   *
+   * @param activity The current Activity.
+   * @param adUnitId The AdMob Native Ad Unit ID.
+   * @param layoutResId Resource ID of your fullscreen native ad layout XML.
+   * @param onDismiss Called when user closes the fullscreen native ad.
+   */
+  fun pollAndShowFullScreen(
+    activity: Activity,
+    adUnitId: String,
+    @LayoutRes layoutResId: Int,
+    onDismiss: () -> Unit,
+  ) {
+    if (!NextGenAds.canShowAds(activity)) {
+      onDismiss()
+      return
+    }
+
+    val resolvedAdUnitId = NextGenAds.resolveAdUnitId(adUnitId, AdFormat.NATIVE)
+
+    // Try preloaded ad first
+    val preloadedAd = pollAd(resolvedAdUnitId)
+    if (preloadedAd != null) {
+      NextGenAds.log("NativeAdHelper.pollAndShowFullScreen: using preloaded ad")
+      NextGenAds.runOnMainThread {
+        if (activity.isFinishing || activity.isDestroyed) {
+          preloadedAd.destroy()
+          onDismiss()
+          return@runOnMainThread
+        }
+        try {
+          val dialog = NativeFullScreenDialog(activity, preloadedAd, layoutResId, onDismiss)
+          dialog.show()
+        } catch (e: Exception) {
+          NextGenAds.logError("pollAndShowFullScreen: failed to show dialog: ${e.message}", e)
+          preloadedAd.destroy()
+          onDismiss()
+        }
+      }
+    } else {
+      // Fallback: load new ad
+      NextGenAds.log("NativeAdHelper.pollAndShowFullScreen: no preloaded ad, loading new one")
+      showFullScreen(activity, adUnitId, layoutResId, onDismiss)
+    }
   }
 }

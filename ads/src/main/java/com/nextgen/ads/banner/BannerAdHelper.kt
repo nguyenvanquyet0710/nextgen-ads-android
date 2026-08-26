@@ -17,6 +17,7 @@
 package com.nextgen.ads.banner
 
 import android.content.Context
+import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -198,7 +199,7 @@ object BannerAdHelper {
     callback: AdEventListener? = null,
   ) {
     // 1. Check if ads are enabled
-    if (!NextGenAds.adConfig.isAdsEnabled) {
+    if (!NextGenAds.canShowAds(container.context)) {
       container.visibility = View.GONE
       return
     }
@@ -287,6 +288,124 @@ object BannerAdHelper {
       )
     } catch (e: Exception) {
       NextGenAds.logError("Failed to load Banner ad into FrameLayout: ${e.message}", e)
+      AdShimmerView.removeShimmerAndHide(container)
+    }
+  }
+
+  /**
+   * Loads and displays a **Collapsible Banner Ad** into a plain [FrameLayout].
+   * The banner initially appears expanded (large), and the user can collapse it
+   * to standard banner size by tapping the close/collapse button built into the ad.
+   *
+   * Uses Google's official collapsible banner API via `putAdSourceExtrasBundle`.
+   *
+   * @param container The FrameLayout on your layout.
+   * @param adUnitId The AdMob Banner Ad Unit ID.
+   * @param collapsiblePosition Position of the expanded ad: "bottom" or "top" (default: "bottom").
+   * @param lifecycleOwner Automatically destroys AdView when Activity/Fragment is destroyed.
+   * @param showShimmer Show shimmer loading placeholder while ad is loading.
+   * @param shimmerLayoutResId Custom shimmer layout resource (null = use default banner shimmer).
+   * @param callback Ad lifecycle event listener.
+   */
+  fun loadCollapsibleInto(
+    container: FrameLayout,
+    adUnitId: String,
+    collapsiblePosition: String = "bottom",
+    lifecycleOwner: LifecycleOwner? = null,
+    showShimmer: Boolean = true,
+    @LayoutRes shimmerLayoutResId: Int? = null,
+    callback: AdEventListener? = null,
+  ) {
+    // 1. Check if ads are enabled
+    if (!NextGenAds.canShowAds(container.context)) {
+      container.visibility = View.GONE
+      return
+    }
+
+    // 2. Resolve test/live ad unit ID
+    val resolvedAdUnitId = NextGenAds.resolveAdUnitId(adUnitId, AdFormat.BANNER)
+    NextGenAds.log("BannerAdHelper.loadCollapsibleInto: resolved=$resolvedAdUnitId, position=$collapsiblePosition")
+
+    // 3. Show shimmer loading placeholder
+    container.removeAllViews()
+    if (showShimmer) {
+      if (shimmerLayoutResId != null) {
+        AdShimmerView.showCustomShimmer(container, shimmerLayoutResId)
+      } else {
+        AdShimmerView.showBannerShimmer(container)
+      }
+    }
+    container.visibility = View.VISIBLE
+
+    // 4. Create AdView programmatically
+    val context = container.context
+    val adView = AdView(context)
+    adView.layoutParams = FrameLayout.LayoutParams(
+      FrameLayout.LayoutParams.MATCH_PARENT,
+      FrameLayout.LayoutParams.WRAP_CONTENT
+    )
+
+    // 5. Bind lifecycle
+    lifecycleOwner?.let { bindLifecycle(adView, it) }
+
+    // 6. Build collapsible banner ad request
+    val adSize = getLargeAnchoredAdaptiveBannerAdSize(context)
+    val extras = Bundle()
+    extras.putString("collapsible", collapsiblePosition)
+
+    try {
+      val bannerAdRequest = BannerAdRequest.Builder(resolvedAdUnitId, adSize)
+        .putAdSourceExtrasBundle(com.google.android.gms.ads.mediation.admob.AdMobAdapter::class.java, extras)
+        .build()
+
+      adView.loadAd(
+        bannerAdRequest,
+        object : AdLoadCallback<BannerAd> {
+          override fun onAdLoaded(ad: BannerAd) {
+            NextGenAds.log("Collapsible banner ad loaded for: $resolvedAdUnitId")
+
+            ad.adEventCallback = object : BannerAdEventCallback {
+              override fun onAdImpression() {
+                NextGenAds.log("Collapsible banner ad impression recorded.")
+                NextGenAds.runOnMainThread { callback?.onAdImpression() }
+              }
+
+              override fun onAdClicked() {
+                NextGenAds.log("Collapsible banner ad clicked.")
+                NextGenAds.runOnMainThread { callback?.onAdClicked() }
+              }
+            }
+
+            ad.bannerAdRefreshCallback = object : BannerAdRefreshCallback {
+              override fun onAdRefreshed() {
+                NextGenAds.log("Collapsible banner ad refreshed.")
+                NextGenAds.runOnMainThread { callback?.onAdRefreshed() }
+              }
+
+              override fun onAdFailedToRefresh(adError: LoadAdError) {
+                NextGenAds.logError("Collapsible banner ad failed to refresh: ${adError.message}")
+                NextGenAds.runOnMainThread { callback?.onAdFailedToRefresh(adError) }
+              }
+            }
+
+            // Replace shimmer with the real ad
+            NextGenAds.runOnMainThread {
+              AdShimmerView.replaceShimmerWithAd(container, adView)
+              callback?.onAdLoaded()
+            }
+          }
+
+          override fun onAdFailedToLoad(adError: LoadAdError) {
+            NextGenAds.logError("Collapsible banner ad failed to load: ${adError.message}")
+            NextGenAds.runOnMainThread {
+              AdShimmerView.removeShimmerAndHide(container)
+              callback?.onAdFailedToLoad(adError)
+            }
+          }
+        },
+      )
+    } catch (e: Exception) {
+      NextGenAds.logError("Failed to load Collapsible Banner ad: ${e.message}", e)
       AdShimmerView.removeShimmerAndHide(container)
     }
   }

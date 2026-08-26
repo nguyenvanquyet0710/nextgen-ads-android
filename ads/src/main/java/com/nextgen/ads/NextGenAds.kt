@@ -58,6 +58,8 @@ data class AdConfig(
   val isTestMode: Boolean = false,
   val isAdsEnabled: Boolean = true,
   val isDebug: Boolean = false,
+  val isCheckTestDevice: Boolean = false,
+  val isCheckOrganic: Boolean = false,
 )
 
 /**
@@ -82,6 +84,67 @@ object NextGenAds {
   private val initCallbacks = mutableListOf<(InitializationStatus) -> Unit>()
 
   var isDebug: Boolean = false
+
+  /** Install referrer URL from Google Play (null if not yet fetched). */
+  var referrerUrl: String? = null
+    private set
+
+  /** Whether this device has been detected as a test device (via ad headline analysis). */
+  var isTestDevice: Boolean = false
+    private set
+
+  /**
+   * Whether the install is organic (from Google Play search, not from ads).
+   * Returns null if referrer has not been fetched yet.
+   */
+  val isOrganic: Boolean?
+    get() {
+      val url = referrerUrl ?: return null
+      val lowerRef = url.lowercase()
+      return when {
+        // Case 1: Organic rõ ràng
+        lowerRef.contains("utm_medium=organic") -> true
+        // Case 2: Organic mặc định Play Store (không có utm_medium)
+        lowerRef.contains("utm_source=google-play") &&
+          !lowerRef.contains("utm_medium=") -> true
+        // Case 3: Organic = not set
+        lowerRef.contains("utm_medium=(not%20set)") ||
+          lowerRef.contains("utm_medium=(not set)") ||
+          lowerRef.contains("utm_medium=not%20set") -> true
+        // Case 4: Empty hoặc null = organic
+        lowerRef.isBlank() || lowerRef == "null" -> true
+        else -> false
+      }
+    }
+
+  /**
+   * Whether ads should be shown. Combines all checks:
+   * - [AdConfig.isAdsEnabled] = false → no ads (premium user)
+   * - [AdConfig.isCheckOrganic] = true AND user is organic → no ads
+   * - isTestDevice = true → no ads (once detected, always blocks)
+   *
+   * All ad helpers use this property to decide whether to load/show ads.
+   */
+  val canShowAds: Boolean
+    get() {
+      if (!adConfig.isAdsEnabled) return false
+      if (isTestDevice) return false
+      if (adConfig.isCheckOrganic && isOrganic == true) return false
+      return true
+    }
+
+  /**
+   * Same as [canShowAds] but also checks network connectivity.
+   * Use this in ad load functions that have access to [Context].
+   */
+  fun canShowAds(context: Context): Boolean {
+    if (!canShowAds) return false
+    if (!isNetworkAvailable(context)) {
+      log("canShowAds: No network connection")
+      return false
+    }
+    return true
+  }
 
   var isFullScreenAdShowing: Boolean = false
     internal set(value) {
@@ -184,6 +247,134 @@ object NextGenAds {
         testDeviceIds = testDeviceIds,
         ageRestrictedTreatment = ageRestrictedTreatment,
       )
+    }
+  }
+
+  /**
+   * Simplified initializer matching common ad library pattern.
+   * Initializes SDK, sets ad config, and fetches install referrer for organic detection.
+   *
+   * @param context Application context.
+   * @param appId Google AdMob App ID.
+   * @param isDebug true = use test ad unit IDs, false = use real ads.
+   * @param isEnableAds true = show ads, false = hide all ads (for premium users).
+   * @param isCheckTestDevice true = detect test device via ad headline analysis.
+   * @param isCheckOrganic true = check organic install, if organic → canShowAds returns false.
+   * @param onComplete Callback when SDK + referrer are ready.
+   */
+  fun initAdmob(
+    context: Context,
+    appId: String = SAMPLE_APP_ID,
+    isDebug: Boolean = false,
+    isEnableAds: Boolean = true,
+    isCheckTestDevice: Boolean = false,
+    isCheckOrganic: Boolean = false,
+    onComplete: (() -> Unit)? = null,
+  ) {
+    // 1. Set ad config
+    adConfig = AdConfig(
+      isTestMode = isDebug,
+      isAdsEnabled = isEnableAds,
+      isDebug = isDebug,
+      isCheckTestDevice = isCheckTestDevice,
+      isCheckOrganic = isCheckOrganic,
+    )
+
+    // 2. Initialize SDK on background thread
+    CoroutineScope(Dispatchers.IO).launch {
+      val appContext = context.applicationContext
+      val initConfig = InitializationConfig.Builder(appId).build()
+
+      MobileAds.initialize(appContext, initConfig) { initStatus ->
+        cachedInitStatus = initStatus
+        isInitializedFlag.set(true)
+        isInitializingFlag.set(false)
+        log("Mobile Ads SDK initialization complete: $initStatus")
+
+        // 3. Fetch install referrer on main thread
+        runOnMainThread {
+          fetchInstallReferrer(appContext) {
+            log("Install referrer fetched: $referrerUrl (organic=$isOrganic)")
+            onComplete?.invoke()
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Fetches the install referrer from Google Play to determine if the install is organic.
+   */
+  private fun fetchInstallReferrer(context: Context, onComplete: () -> Unit) {
+    try {
+      val referrerClient = com.android.installreferrer.api.InstallReferrerClient.newBuilder(context).build()
+      referrerClient.startConnection(object : com.android.installreferrer.api.InstallReferrerStateListener {
+        override fun onInstallReferrerSetupFinished(responseCode: Int) {
+          try {
+            if (responseCode == com.android.installreferrer.api.InstallReferrerClient.InstallReferrerResponse.OK) {
+              val response = referrerClient.installReferrer
+              referrerUrl = response.installReferrer
+              log("Install referrer URL: $referrerUrl")
+            } else {
+              log("Install referrer failed with code: $responseCode")
+            }
+          } catch (e: Exception) {
+            logError("Error fetching install referrer: ${e.message}", e)
+          } finally {
+            try { referrerClient.endConnection() } catch (_: Exception) {}
+            onComplete()
+          }
+        }
+
+        override fun onInstallReferrerServiceDisconnected() {
+          log("Install referrer service disconnected")
+          onComplete()
+        }
+      })
+    } catch (e: Exception) {
+      logError("Failed to start install referrer client: ${e.message}", e)
+      onComplete()
+    }
+  }
+
+  /**
+   * Checks if the current device is a test device by analyzing the ad headline.
+   * Call this after a native ad loads to detect test devices.
+   *
+   * @param headline The headline text from a loaded native ad (nativeAd.headline).
+   */
+  fun checkAdsTest(headline: String?) {
+    if (!adConfig.isCheckTestDevice) {
+      isTestDevice = false
+      return
+    }
+
+    try {
+      val testHeadline = headline.orEmpty().replace(" ", "").split(":").firstOrNull() ?: ""
+      val testAdResponses = arrayOf(
+        "TestAd",
+        "Anunciodeprueba",
+        "Annuncioditesto",
+        "Testanzeige",
+        "TesIklan",
+        "Anúnciodeteste",
+        "Тестовоеобъявление",
+        "পরীক্ষামূলকবিজ্ঞাপন",
+        "जाँचविज्ञापन",
+        "إعلانتجريبي",
+        "Quảngcáothửnghiệm",
+        "テスト広告",
+        "测试广告",
+        "測試廣告",
+        "테스트광고",
+        "Testreklam",
+        "โฆษณาทดสอบ",
+      )
+      isTestDevice = testAdResponses.contains(testHeadline)
+      log("checkAdsTest: headline='$testHeadline', isTestDevice=$isTestDevice")
+    } catch (e: Exception) {
+      isTestDevice = true
+      logError("checkAdsTest error: ${e.message}", e)
     }
   }
 

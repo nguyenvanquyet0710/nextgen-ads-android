@@ -180,7 +180,7 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
     timeoutMs: Long = 4000L,
     onComplete: () -> Unit,
   ) {
-    if (!NextGenAds.adConfig.isAdsEnabled) {
+    if (!NextGenAds.canShowAds(activity)) {
       onComplete()
       return
     }

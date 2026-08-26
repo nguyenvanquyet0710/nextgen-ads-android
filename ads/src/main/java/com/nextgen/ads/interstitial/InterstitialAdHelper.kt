@@ -126,7 +126,7 @@ object InterstitialAdHelper {
     callback: AdEventListener? = null,
     onComplete: (() -> Unit)? = null,
   ) {
-    if (!NextGenAds.adConfig.isAdsEnabled) {
+    if (!NextGenAds.canShowAds(activity)) {
       onComplete?.invoke()
       return
     }
@@ -189,7 +189,7 @@ object InterstitialAdHelper {
     callback: AdEventListener? = null,
     onComplete: (() -> Unit)? = null,
   ) {
-    if (!NextGenAds.adConfig.isAdsEnabled) {
+    if (!NextGenAds.canShowAds(activity)) {
       onComplete?.invoke()
       return
     }
@@ -324,5 +324,58 @@ object InterstitialAdHelper {
         NextGenAds.logError("Error showing Interstitial ad: ${e.message}", e)
       }
     }
+  }
+
+  /**
+   * Combo: Show Interstitial → Close → Show Native Fullscreen → Close → onComplete.
+   *
+   * Flow: Loading Dialog → Inter shows → User closes Inter
+   *       → Native Fullscreen shows → User closes Native → onComplete
+   *
+   * If Inter fails to load/show, skips directly to Native Fullscreen.
+   * If Native also fails, calls onComplete immediately.
+   *
+   * @param activity The current Activity.
+   * @param interAdUnitId The Interstitial Ad Unit ID.
+   * @param nativeAdUnitId The Native Ad Unit ID.
+   * @param nativeLayoutResId Layout resource for the fullscreen native ad.
+   * @param loadingMessage Loading dialog message text.
+   * @param loadingDurationMs Loading dialog minimum display time.
+   * @param onComplete Called after BOTH ads have been shown and dismissed.
+   */
+  fun showThenNativeFullScreen(
+    activity: Activity,
+    interAdUnitId: String,
+    nativeAdUnitId: String,
+    @androidx.annotation.LayoutRes nativeLayoutResId: Int,
+    loadingMessage: String = "Loading...",
+    loadingDurationMs: Long = 800L,
+    onComplete: () -> Unit,
+  ) {
+    if (!NextGenAds.canShowAds(activity)) {
+      onComplete()
+      return
+    }
+
+    // Step 1: Show Interstitial with loading dialog
+    pollAndShowWithLoading(
+      activity = activity,
+      adUnitId = interAdUnitId,
+      loadingMessage = loadingMessage,
+      loadingDurationMs = loadingDurationMs,
+      callback = null,
+      onComplete = {
+        // Step 2: After Inter closes → Show Native Fullscreen
+        com.nextgen.ads.nativead.NativeAdHelper.pollAndShowFullScreen(
+          activity = activity,
+          adUnitId = nativeAdUnitId,
+          layoutResId = nativeLayoutResId,
+          onDismiss = {
+            // Step 3: After Native closes → action
+            onComplete()
+          }
+        )
+      }
+    )
   }
 }

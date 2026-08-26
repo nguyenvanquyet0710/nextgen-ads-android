@@ -120,7 +120,7 @@ object RewardedInterstitialHelper {
     onUserEarnedReward: (RewardItem) -> Unit,
     onComplete: (() -> Unit)? = null,
   ) {
-    if (!NextGenAds.adConfig.isAdsEnabled) {
+    if (!NextGenAds.canShowAds(activity)) {
       onComplete?.invoke()
       return
     }
@@ -227,7 +227,7 @@ object RewardedInterstitialHelper {
     onUserEarnedReward: (RewardItem) -> Unit,
     onComplete: (() -> Unit)? = null,
   ) {
-    if (!NextGenAds.adConfig.isAdsEnabled) {
+    if (!NextGenAds.canShowAds(activity)) {
       onComplete?.invoke()
       return
     }

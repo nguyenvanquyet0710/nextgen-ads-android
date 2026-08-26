@@ -45,6 +45,7 @@ dependencies {
   implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
   implementation("com.facebook.shimmer:shimmer:0.5.0")
+  implementation("com.android.installreferrer:installreferrer:2.2")
 }
 
 configurations.configureEach {
@@ -59,7 +60,7 @@ afterEvaluate {
         from(components["release"])
         groupId = (project.findProperty("PUBLISH_GROUP_ID") as? String) ?: "com.github.nguyenvanquyet0710"
         artifactId = (project.findProperty("PUBLISH_ARTIFACT_ID") as? String) ?: "nextgen-ads"
-        version = (project.findProperty("PUBLISH_VERSION") as? String) ?: "1.1.2"
+        version = (project.findProperty("PUBLISH_VERSION") as? String) ?: "1.2.0"
 
         pom {
           name.set("Google Mobile Ads Next-Gen Android Library")
