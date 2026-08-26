@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black">
+
+    <!-- Native ad container -->
+    <FrameLayout
+        android:id="@+id/fl_native"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Top bar: status bar spacer + close button -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_gravity="top|end">
+
+        <!-- Status bar height spacer -->
+        <View
+            android:id="@+id/view_status_bar"
+            android:layout_width="match_parent"
+            android:layout_height="0dp" />
+
+        <ImageView
+            android:id="@+id/btn_close"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_gravity="end"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="12dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Close"
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/nextgen_ic_close"
+            android:visibility="gone" />
+    </LinearLayout>
+
+</FrameLayout>
