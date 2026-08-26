@@ -73,20 +73,15 @@ class NativeFullScreenActivity : AppCompatActivity() {
       height = statusHeight
     }
 
-    // Close button
+    // Close button - show immediately
+    btnClose.visibility = View.VISIBLE
     btnClose.setOnClickListener {
       finish()
     }
 
-    // Get parameters
-    val layoutResId = intent.getIntExtra(EXTRA_LAYOUT_RES_ID, 0)
+    // Get parameters (use default library layout if none provided)
+    val layoutResId = intent.getIntExtra(EXTRA_LAYOUT_RES_ID, R.layout.nextgen_native_fullscreen)
     val adUnitId = intent.getStringExtra(EXTRA_AD_UNIT_ID)
-
-    if (layoutResId == 0) {
-      NextGenAds.logError("NativeFullScreenActivity: no layout resource provided")
-      finish()
-      return
-    }
 
     // Show the native ad
     val preloadedAd = pendingNativeAd
@@ -114,9 +109,6 @@ class NativeFullScreenActivity : AppCompatActivity() {
 
       flNative.removeAllViews()
       flNative.addView(adView)
-
-      // Show close button
-      btnClose.visibility = View.VISIBLE
 
       NextGenAds.log("NativeFullScreenActivity: native ad displayed")
     } catch (e: Exception) {

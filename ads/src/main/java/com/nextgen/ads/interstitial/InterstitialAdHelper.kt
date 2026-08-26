@@ -329,7 +329,7 @@ object InterstitialAdHelper {
   /**
    * Combo: Show Interstitial → Close → Show Native Fullscreen → Close → onComplete.
    *
-   * Flow: Loading Dialog → Inter shows → User closes Inter
+   * Flow: Loading Dialog → Inter loads+shows → User closes Inter
    *       → Native Fullscreen shows → User closes Native → onComplete
    *
    * If Inter fails to load/show, skips directly to Native Fullscreen.
@@ -338,18 +338,16 @@ object InterstitialAdHelper {
    * @param activity The current Activity.
    * @param interAdUnitId The Interstitial Ad Unit ID.
    * @param nativeAdUnitId The Native Ad Unit ID.
-   * @param nativeLayoutResId Layout resource for the fullscreen native ad.
+   * @param nativeLayoutResId Layout resource for the fullscreen native ad (default: library built-in layout).
    * @param loadingMessage Loading dialog message text.
-   * @param loadingDurationMs Loading dialog minimum display time.
    * @param onComplete Called after BOTH ads have been shown and dismissed.
    */
   fun showThenNativeFullScreen(
     activity: Activity,
     interAdUnitId: String,
     nativeAdUnitId: String,
-    @androidx.annotation.LayoutRes nativeLayoutResId: Int,
+    @androidx.annotation.LayoutRes nativeLayoutResId: Int = com.nextgen.ads.R.layout.nextgen_native_fullscreen,
     loadingMessage: String = "Loading...",
-    loadingDurationMs: Long = 800L,
     onComplete: () -> Unit,
   ) {
     if (!NextGenAds.canShowAds(activity)) {
@@ -357,16 +355,15 @@ object InterstitialAdHelper {
       return
     }
 
-    // Step 1: Show Interstitial with loading dialog
-    pollAndShowWithLoading(
+    // Step 1: Load and show Interstitial with loading dialog
+    loadAndShowWithLoading(
       activity = activity,
       adUnitId = interAdUnitId,
       loadingMessage = loadingMessage,
-      loadingDurationMs = loadingDurationMs,
       callback = null,
       onComplete = {
         // Step 2: After Inter closes → Show Native Fullscreen
-        com.nextgen.ads.nativead.NativeAdHelper.pollAndShowFullScreen(
+        com.nextgen.ads.nativead.NativeAdHelper.showFullScreen(
           activity = activity,
           adUnitId = nativeAdUnitId,
           layoutResId = nativeLayoutResId,

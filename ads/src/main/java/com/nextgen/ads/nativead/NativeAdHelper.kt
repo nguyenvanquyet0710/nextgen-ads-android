@@ -556,7 +556,7 @@ object NativeAdHelper {
   fun showFullScreen(
     activity: Activity,
     adUnitId: String,
-    @LayoutRes layoutResId: Int,
+    @LayoutRes layoutResId: Int = com.nextgen.ads.R.layout.nextgen_native_fullscreen,
     onDismiss: () -> Unit,
   ) {
     if (!NextGenAds.canShowAds(activity)) {
@@ -593,7 +593,7 @@ object NativeAdHelper {
   fun pollAndShowFullScreen(
     activity: Activity,
     adUnitId: String,
-    @LayoutRes layoutResId: Int,
+    @LayoutRes layoutResId: Int = com.nextgen.ads.R.layout.nextgen_native_fullscreen,
     onDismiss: () -> Unit,
   ) {
     if (!NextGenAds.canShowAds(activity)) {
