@@ -88,10 +88,11 @@ class NativeFullScreenActivity : AppCompatActivity() {
     pendingNativeAd = null
 
     if (preloadedAd != null) {
-      // Use preloaded ad
+      // Use preloaded ad — no shimmer needed
       showNativeAd(preloadedAd, layoutResId)
     } else if (adUnitId != null) {
-      // Load new ad
+      // Show shimmer while loading
+      com.nextgen.ads.shimmer.AdShimmerView.showCustomShimmer(flNative, layoutResId)
       loadAndShowNativeAd(adUnitId, layoutResId)
     } else {
       NextGenAds.logError("NativeFullScreenActivity: no ad or adUnitId provided")
@@ -107,8 +108,8 @@ class NativeFullScreenActivity : AppCompatActivity() {
       NativeAdHelper.autoBindViews(adView)
       NativeAdHelper.populateNativeAdView(nativeAd, adView)
 
-      flNative.removeAllViews()
-      flNative.addView(adView)
+      // Replace shimmer (if any) with the real ad
+      com.nextgen.ads.shimmer.AdShimmerView.replaceShimmerWithAd(flNative, adView)
 
       NextGenAds.log("NativeFullScreenActivity: native ad displayed")
     } catch (e: Exception) {

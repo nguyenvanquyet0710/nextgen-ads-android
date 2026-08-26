@@ -284,9 +284,8 @@ object NativeAdHelper {
     // 9. Bind & Register the NativeAd object to the NativeAdView container
     val mediaView = nativeAdView.mediaView
     if (mediaView != null) {
-      mediaView.post {
-        nativeAdView.registerNativeAd(nativeAd, mediaView)
-      }
+      mediaView.visibility = android.view.View.VISIBLE
+      nativeAdView.registerNativeAd(nativeAd, mediaView)
     } else {
       nativeAdView.registerNativeAd(nativeAd, null)
     }

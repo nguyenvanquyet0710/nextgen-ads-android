@@ -53,10 +53,11 @@ object BannerAdHelper {
   }
 
   /**
-   * Returns standard banner ad size (320x50).
+   * Returns anchored adaptive banner ad size (standard height).
    */
   fun getAdaptiveBannerAdSize(context: Context, widthDp: Int? = null): AdSize {
-    return AdSize.BANNER
+    val width = widthDp ?: getScreenWidthDp(context)
+    return AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(context, width)
   }
 
   /**
@@ -349,7 +350,7 @@ object BannerAdHelper {
     lifecycleOwner?.let { bindLifecycle(adView, it) }
 
     // 6. Build collapsible banner ad request
-    val adSize = getLargeAnchoredAdaptiveBannerAdSize(context)
+    val adSize = getAdaptiveBannerAdSize(context)
     val extras = Bundle()
     extras.putString("collapsible", collapsiblePosition)
 
