@@ -18,6 +18,7 @@ package com.nextgen.ads.banner
 
 import android.content.Context
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -179,6 +180,12 @@ object BannerAdHelper {
    * Loads and displays a Banner Ad into a plain [FrameLayout].
    * Automatically creates AdView, shows shimmer loading, and crossfades to the real ad.
    *
+   * Default size is [AdSize.BANNER] (320×50) — the classic sticky banner creative
+   * (e.g. test ad: "Nice job! This is a 320x50 test ad.").
+   *
+   * For adaptive: pass [getAdaptiveBannerAdSize] / [getLargeAnchoredAdaptiveBannerAdSize],
+   * or set [isLarge] = true.
+   *
    * Usage in XML: just use `<FrameLayout android:id="@+id/fl_banner" .../>`
    * Usage in Kotlin: `BannerAdHelper.loadInto(binding.flBanner, "ad-unit-id", this)`
    *
@@ -187,6 +194,7 @@ object BannerAdHelper {
    * @param lifecycleOwner Automatically destroys AdView when Activity/Fragment is destroyed.
    * @param showShimmer Show shimmer loading placeholder while ad is loading (default: true).
    * @param shimmerLayoutResId Custom shimmer layout resource (null = use default banner shimmer).
+   * @param adSize Banner size (default: [AdSize.BANNER] 320×50). Ignored when [isLarge] is true.
    * @param isLarge Use large anchored adaptive banner size (default: false).
    * @param callback Ad lifecycle event listener.
    */
@@ -196,6 +204,7 @@ object BannerAdHelper {
     lifecycleOwner: LifecycleOwner? = null,
     showShimmer: Boolean = true,
     @LayoutRes shimmerLayoutResId: Int? = null,
+    adSize: AdSize = AdSize.BANNER,
     isLarge: Boolean = false,
     callback: AdEventListener? = null,
   ) {
@@ -225,22 +234,23 @@ object BannerAdHelper {
     val adView = AdView(context)
     adView.layoutParams = FrameLayout.LayoutParams(
       FrameLayout.LayoutParams.MATCH_PARENT,
-      FrameLayout.LayoutParams.WRAP_CONTENT
+      FrameLayout.LayoutParams.WRAP_CONTENT,
+      Gravity.CENTER_HORIZONTAL,
     )
 
     // 5. Bind lifecycle
     lifecycleOwner?.let { bindLifecycle(adView, it) }
 
-    // 6. Calculate ad size
-    val adSize = if (isLarge) {
-      getLargeAnchoredAdaptiveBannerAdSize(context)
-    } else {
-      getAdaptiveBannerAdSize(context)
+    // 6. Resolve ad size — default fixed 320×50; adaptive when requested
+    val resolvedAdSize = when {
+      isLarge -> getLargeAnchoredAdaptiveBannerAdSize(context)
+      else -> adSize
     }
+    NextGenAds.log("BannerAdHelper.loadInto: adSize=${resolvedAdSize.width}x${resolvedAdSize.height}")
 
     // 7. Load banner
     try {
-      val bannerAdRequest = BannerAdRequest.Builder(resolvedAdUnitId, adSize).build()
+      val bannerAdRequest = BannerAdRequest.Builder(resolvedAdUnitId, resolvedAdSize).build()
       adView.loadAd(
         bannerAdRequest,
         object : AdLoadCallback<BannerAd> {

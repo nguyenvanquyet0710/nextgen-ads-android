@@ -16,6 +16,7 @@
 
 package com.nextgen.ads.appopen
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.Application
 import android.content.Context
@@ -99,6 +100,7 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
   /**
    * Loads an App Open Ad.
    */
+  @SuppressLint("StaticFieldLeak")
   fun loadAd(
     context: Context,
     adUnitId: String? = defaultAdUnitId,

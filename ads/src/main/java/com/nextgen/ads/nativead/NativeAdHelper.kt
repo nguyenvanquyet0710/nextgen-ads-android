@@ -218,7 +218,7 @@ object NativeAdHelper {
    */
   fun populateNativeAdView(
     nativeAd: NativeAd,
-    nativeAdView: com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdView,
+    nativeAdView: NativeAdView,
   ) {
     // 1. Headline
     (nativeAdView.headlineView as? android.widget.TextView)?.apply {
@@ -282,7 +282,13 @@ object NativeAdHelper {
     }
 
     // 9. Bind & Register the NativeAd object to the NativeAdView container
+    // nativeAdView.mediaView is read-only (val) and auto-discovery may return null,
+    // so fallback to finding MediaView by resource ID "ad_media".
     val mediaView = nativeAdView.mediaView
+      ?: run {
+        val mediaId = nativeAdView.context.resources.getIdentifier("ad_media", "id", nativeAdView.context.packageName)
+        if (mediaId != 0) nativeAdView.findViewById<MediaView>(mediaId) else null
+      }
     if (mediaView != null) {
       mediaView.visibility = android.view.View.VISIBLE
       nativeAdView.registerNativeAd(nativeAd, mediaView)
@@ -389,6 +395,122 @@ object NativeAdHelper {
         }
       }
     }
+  }
+
+  /**
+   * Shows a previously loaded (or preloaded) [NativeAd] into a plain [FrameLayout].
+   * Inflates [layoutResId], auto-binds standard view IDs, populates ad assets,
+   * and replaces any existing content in [container].
+   *
+   * Usage:
+   * ```
+   * val nativeAd = NativeAdHelper.pollAd(adUnitId) ?: return
+   * NativeAdHelper.show(
+   *     container = binding.flNative,
+   *     nativeAd = nativeAd,
+   *     layoutResId = R.layout.ad_template_medium,
+   *     lifecycleOwner = this,
+   * )
+   * ```
+   *
+   * @param container The FrameLayout on your layout.
+   * @param nativeAd The loaded Native Ad to display.
+   * @param layoutResId Resource ID of your custom native ad layout XML (root must be NativeAdView).
+   * @param lifecycleOwner Automatically destroys native ad when Activity/Fragment is destroyed.
+   * @param callback Ad lifecycle event listener.
+   * @return true if the ad was shown successfully, false otherwise.
+   */
+  fun show(
+    container: FrameLayout,
+    nativeAd: NativeAd,
+    @LayoutRes layoutResId: Int,
+    lifecycleOwner: LifecycleOwner? = null,
+    callback: AdEventListener? = null,
+  ): Boolean {
+    if (!NextGenAds.canShowAds(container.context)) {
+      container.visibility = View.GONE
+      return false
+    }
+
+    return try {
+      val inflater = LayoutInflater.from(container.context)
+      val adView = inflater.inflate(layoutResId, container, false) as NativeAdView
+
+      autoBindViews(adView)
+      populateNativeAdView(nativeAd, adView)
+      callback?.let { bindEventCallback(nativeAd, it) }
+
+      lifecycleOwner?.lifecycle?.addObserver(object : DefaultLifecycleObserver {
+        override fun onDestroy(owner: LifecycleOwner) {
+          try {
+            nativeAd.destroy()
+          } catch (_: Exception) {}
+          owner.lifecycle.removeObserver(this)
+        }
+      })
+
+      container.removeAllViews()
+      container.addView(adView)
+      container.visibility = View.VISIBLE
+      callback?.onAdLoaded()
+      true
+    } catch (e: Exception) {
+      NextGenAds.logError("Failed to show native ad: ${e.message}", e)
+      container.visibility = View.GONE
+      false
+    }
+  }
+
+  /**
+   * Polls a preloaded Native Ad (from [startPreloader]) and shows it into [container].
+   * Returns false if no preloaded ad is available.
+   *
+   * Usage:
+   * ```
+   * NativeAdHelper.startPreloader(adUnitId)
+   * // later…
+   * NativeAdHelper.showPreloadedInto(
+   *     container = binding.flNative,
+   *     adUnitId = adUnitId,
+   *     layoutResId = R.layout.ad_template_medium,
+   *     lifecycleOwner = this,
+   * )
+   * ```
+   *
+   * @param container The FrameLayout on your layout.
+   * @param adUnitId The AdMob Native Ad Unit ID used with [startPreloader].
+   * @param layoutResId Resource ID of your custom native ad layout XML (root must be NativeAdView).
+   * @param lifecycleOwner Automatically destroys native ad when Activity/Fragment is destroyed.
+   * @param callback Ad lifecycle event listener.
+   * @return true if a preloaded ad was available and shown, false otherwise.
+   */
+  fun showPreloadedInto(
+    container: FrameLayout,
+    adUnitId: String,
+    @LayoutRes layoutResId: Int,
+    lifecycleOwner: LifecycleOwner? = null,
+    callback: AdEventListener? = null,
+  ): Boolean {
+    if (!NextGenAds.canShowAds(container.context)) {
+      container.visibility = View.GONE
+      return false
+    }
+
+    val resolvedAdUnitId = NextGenAds.resolveAdUnitId(adUnitId, AdFormat.NATIVE)
+    val nativeAd = pollAd(resolvedAdUnitId)
+    if (nativeAd == null) {
+      NextGenAds.log("NativeAdHelper.showPreloadedInto: no preloaded ad for $resolvedAdUnitId")
+      return false
+    }
+
+    NextGenAds.log("NativeAdHelper.showPreloadedInto: showing preloaded ad for $resolvedAdUnitId")
+    return show(
+      container = container,
+      nativeAd = nativeAd,
+      layoutResId = layoutResId,
+      lifecycleOwner = lifecycleOwner,
+      callback = callback,
+    )
   }
 
   /**
