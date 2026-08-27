@@ -60,7 +60,7 @@ afterEvaluate {
         from(components["release"])
         groupId = (project.findProperty("PUBLISH_GROUP_ID") as? String) ?: "com.github.nguyenvanquyet0710"
         artifactId = (project.findProperty("PUBLISH_ARTIFACT_ID") as? String) ?: "nextgen-ads"
-        version = (project.findProperty("PUBLISH_VERSION") as? String) ?: "1.2.3"
+        version = (project.findProperty("PUBLISH_VERSION") as? String) ?: "1.2.4"
 
         pom {
           name.set("Google Mobile Ads Next-Gen Android Library")
