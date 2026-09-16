@@ -40,8 +40,8 @@ dependencies {
   api("com.google.android.ump:user-messaging-platform:4.0.0")
   api("androidx.work:work-runtime:2.11.0")
 
-  implementation("androidx.core:core-ktx:1.19.0")
-  implementation("androidx.appcompat:appcompat:1.8.0")
+  implementation("androidx.core:core-ktx:1.16.0")
+  implementation("androidx.appcompat:appcompat:1.7.0")
   implementation("androidx.lifecycle:lifecycle-process:2.11.0")
   implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
