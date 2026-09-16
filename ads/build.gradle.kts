@@ -36,15 +36,15 @@ android {
 }
 
 dependencies {
-  api("com.google.android.libraries.ads.mobile.sdk:ads-mobile-sdk:1.3.1")
-  api("com.google.android.ump:user-messaging-platform:3.1.0")
+  api("com.google.android.libraries.ads.mobile.sdk:ads-mobile-sdk:1.4.0")
+  api("com.google.android.ump:user-messaging-platform:4.0.0")
   api("androidx.work:work-runtime:2.11.0")
 
-  implementation("androidx.core:core-ktx:1.16.0")
-  implementation("androidx.appcompat:appcompat:1.7.0")
-  implementation("androidx.lifecycle:lifecycle-process:2.8.7")
-  implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
-  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+  implementation("androidx.core:core-ktx:1.19.0")
+  implementation("androidx.appcompat:appcompat:1.8.0")
+  implementation("androidx.lifecycle:lifecycle-process:2.11.0")
+  implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
+  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
   implementation("com.facebook.shimmer:shimmer:0.5.0")
   implementation("com.android.installreferrer:installreferrer:2.2")
 }
