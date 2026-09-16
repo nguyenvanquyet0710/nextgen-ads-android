@@ -38,6 +38,7 @@ android {
 dependencies {
   api("com.google.android.libraries.ads.mobile.sdk:ads-mobile-sdk:1.3.1")
   api("com.google.android.ump:user-messaging-platform:3.1.0")
+  api("androidx.work:work-runtime:2.11.0")
 
   implementation("androidx.core:core-ktx:1.16.0")
   implementation("androidx.appcompat:appcompat:1.7.0")
@@ -60,7 +61,7 @@ afterEvaluate {
         from(components["release"])
         groupId = (project.findProperty("PUBLISH_GROUP_ID") as? String) ?: "com.github.nguyenvanquyet0710"
         artifactId = (project.findProperty("PUBLISH_ARTIFACT_ID") as? String) ?: "nextgen-ads"
-        version = (project.findProperty("PUBLISH_VERSION") as? String) ?: "1.2.6"
+        version = (project.findProperty("PUBLISH_VERSION") as? String) ?: "1.2.5"
 
         pom {
           name.set("Google Mobile Ads Next-Gen Android Library")
