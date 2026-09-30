@@ -403,13 +403,19 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
       return
     }
 
+    if (com.nextgen.ads.dialogs.AdLoadingDialog.isAnyShowing) {
+      NextGenAds.log("Skipping App Open Ad on resume: a full screen ad is loading.")
+      return
+    }
+
     if (disabledActivityClasses.contains(activity.javaClass)) {
       NextGenAds.log("Skipping App Open Ad on disabled activity: ${activity.javaClass.simpleName}")
       return
     }
 
     val now = System.currentTimeMillis()
-    if (now - lastShowTime < cooldownMs) {
+    val lastAdClosedAt = maxOf(lastShowTime, NextGenAds.lastFullScreenAdClosedAt)
+    if (now - lastAdClosedAt < cooldownMs) {
       NextGenAds.log("Skipping App Open Ad on resume: cooldown in effect.")
       return
     }
@@ -426,7 +432,11 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
   override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
 
   override fun onActivityResumed(activity: Activity) {
-    if (isAdActivity(activity)) return
+    if (isAdActivity(activity)) {
+      // Returning to an ad already on screen; the app screen resuming after it is not a return to the app.
+      isForegroundShowPending = false
+      return
+    }
     if (isForegroundShowPending) {
       isForegroundShowPending = false
       showOnForeground(activity)

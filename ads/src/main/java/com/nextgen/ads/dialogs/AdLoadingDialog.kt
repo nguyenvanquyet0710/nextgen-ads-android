@@ -118,6 +118,9 @@ class AdLoadingDialog(
     }
   }
 
+  private val isShowing: Boolean
+    get() = dialog?.isShowing == true
+
   fun dismiss() {
     NextGenAds.runOnMainThread {
       try {
@@ -130,5 +133,20 @@ class AdLoadingDialog(
         dialog = null
       }
     }
+  }
+
+  companion object {
+    // Weak keys: a dialog dropped without dismiss() (e.g. Activity destroyed) must not block forever.
+    private val instances = java.util.Collections.newSetFromMap(
+      java.util.WeakHashMap<AdLoadingDialog, Boolean>(),
+    )
+
+    /** Whether any loading dialog is on screen, i.e. a full-screen ad is about to be shown. */
+    internal val isAnyShowing: Boolean
+      get() = synchronized(instances) { instances.any { it.isShowing } }
+  }
+
+  init {
+    synchronized(instances) { instances.add(this) }
   }
 }

@@ -150,9 +150,14 @@ object NextGenAds {
     internal set(value) {
       if (field != value) {
         field = value
+        if (!value) lastFullScreenAdClosedAt = System.currentTimeMillis()
         runOnMainThread { onAdVisibilityChanged?.invoke(value) }
       }
     }
+
+  /** Time (System.currentTimeMillis) when the last full-screen ad of any format was closed. */
+  var lastFullScreenAdClosedAt: Long = 0L
+    private set
 
   /**
    * Global listener invoked whenever ANY full-screen ad (AppOpen, Interstitial, Rewarded) opens or closes.

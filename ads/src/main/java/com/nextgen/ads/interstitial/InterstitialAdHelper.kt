@@ -442,6 +442,10 @@ object InterstitialAdHelper {
 
             override fun onAdFailedToShow(error: FullScreenContentError) {
               NextGenAds.logError("Combo: Interstitial failed to show (${error.message})")
+              if (!nativeFinished && !isActivityGone()) {
+                // Keeps the screen covered (and App Open blocked) while the native is still loading.
+                dialog.show()
+              }
               onInterUnavailable()
             }
           },
