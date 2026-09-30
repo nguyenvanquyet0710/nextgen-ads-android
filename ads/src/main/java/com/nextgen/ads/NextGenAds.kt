@@ -291,8 +291,15 @@ object NextGenAds {
         isInitializingFlag.set(false)
         log("Mobile Ads SDK initialization complete: $initStatus")
 
+        val callbacks = synchronized(initCallbacks) {
+          val list = initCallbacks.toList()
+          initCallbacks.clear()
+          list
+        }
+
         // 3. Fetch install referrer on main thread
         runOnMainThread {
+          callbacks.forEach { it.invoke(initStatus) }
           fetchInstallReferrer(appContext) {
             log("Install referrer fetched: $referrerUrl (organic=$isOrganic)")
             onComplete?.invoke()
@@ -300,6 +307,22 @@ object NextGenAds {
         }
       }
     }
+  }
+
+  /**
+   * Runs [action] on the main thread once the SDK is initialized, via either
+   * [initialize] or [initAdmob]. Runs immediately if already initialized.
+   */
+  internal fun whenInitialized(action: () -> Unit) {
+    val runNow = synchronized(initCallbacks) {
+      if (isInitializedFlag.get()) {
+        true
+      } else {
+        initCallbacks.add { action() }
+        false
+      }
+    }
+    if (runNow) runOnMainThread(action)
   }
 
   /**

@@ -267,23 +267,27 @@ class MyApplication : Application() {
 
 ### Tự động hiển thị khi mở lại App (Resume)
 
-Trong `MyApplication.kt`:
+Gọi trong `Application` hoặc `SplashActivity` (gọi nhiều lần không sao):
 
 ```kotlin
-AppOpenAdManager.init(
-    application = this,
-    defaultAdUnitId = "ca-app-pub-3940256099942544/9257395921",
-    autoShowOnResume = true,
-    cooldownSeconds = 20,
-)
-AppOpenAdManager.disableForActivity(SplashActivity::class.java)
+if (onResume) {
+    AppOpenAdManager.init(
+        application = application,
+        defaultAdUnitId = "ca-app-pub-3940256099942544/9257395921",
+        autoShowOnResume = true,
+        cooldownSeconds = 20,
+    )
+    AppOpenAdManager.disableForActivity(SplashActivity::class.java)
+}
 ```
+
+`init` tự preload ad khi SDK khởi tạo xong (`initialize` hoặc `initAdmob`), không cần gọi `loadAd`. Sau đó ad tự show mỗi lần user quay lại app ở mọi màn, trừ các Activity bị `disableForActivity`. Lần mở app đầu tiên (cold start) không show.
 
 ### AppOpenAdManager — Tất cả hàm
 
 | Hàm | Mô tả |
 |---|---|
-| `init(application, defaultAdUnitId, autoShowOnResume, cooldownSeconds)` | Đăng ký lifecycle observer |
+| `init(application, defaultAdUnitId, autoShowOnResume, cooldownSeconds)` | Đăng ký lifecycle observer + tự preload ad |
 | `setAutoShowEnabled(enabled)` | Bật/tắt auto show on resume |
 | `setCooldownSeconds(seconds)` | Giãn cách giữa các lần auto show |
 | `setDefaultAdUnitId(adUnitId)` | Đổi ad unit ID mặc định |
@@ -359,6 +363,8 @@ InterstitialAdHelper.showThenNativeFullScreen(
     onComplete = { goToNextLevel() },
 )
 ```
+
+Inter load xong là show ngay, không chờ native. Native có sẵn khi inter đóng thì show native fullscreen, chưa có thì gọi `onComplete`. Inter fail thì show native một mình nếu native load được. Chuyển màn / `finish()` phải đặt trong `onComplete`, không gọi trước.
 
 ### InterstitialAdHelper — Tất cả hàm
 

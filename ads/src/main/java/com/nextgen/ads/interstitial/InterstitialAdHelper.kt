@@ -327,26 +327,28 @@ object InterstitialAdHelper {
   }
 
   /**
-   * Combo: Load both Interstitial and Native Fullscreen in parallel with a loading dialog.
-   * ONLY shows ads if BOTH Interstitial and Native ads load successfully.
-   * If either fails to load, skips showing ads completely and executes onComplete immediately.
+   * Combo: Load both Interstitial and Native Fullscreen in parallel with a loading dialog,
+   * then show whichever ads are available. A loaded ad is never discarded because the other failed.
    *
    * Flow:
    * 1. Show Loading Dialog
    * 2. Load Interstitial & Native concurrently
-   * 3. If BOTH succeed:
-   *    - Dismiss dialog -> Show Interstitial
-   *    - When Inter dismissed -> Immediately show Native Fullscreen with preloaded NativeAd
-   *    - When Native dismissed -> Execute onComplete
-   * 4. If EITHER fails:
-   *    - Dismiss dialog -> Clean up any loaded ad -> Execute onComplete immediately
+   * 3. Interstitial loaded -> Dismiss dialog -> Show Interstitial immediately (does not wait for Native)
+   *    - When Inter dismissed: Native ready -> Show Native Fullscreen, otherwise -> Execute onComplete
+   * 4. Interstitial failed to load / show -> Wait for Native:
+   *    - Native loaded -> Show Native Fullscreen alone
+   *    - Native failed -> Execute onComplete
+   * 5. When Native Fullscreen dismissed -> Execute onComplete
+   *
+   * Callers should navigate / finish the Activity inside [onComplete], not before calling this,
+   * otherwise the ads cannot be shown.
    *
    * @param activity The current Activity.
    * @param interAdUnitId The Interstitial Ad Unit ID.
    * @param nativeAdUnitId The Native Ad Unit ID.
    * @param nativeLayoutResId Layout resource for the fullscreen native ad (default: library built-in layout).
    * @param loadingMessage Loading dialog message text.
-   * @param onComplete Called after both ads are dismissed OR immediately if any ad fails.
+   * @param onComplete Called exactly once after all shown ads are dismissed, or when no ad can be shown.
    */
   fun showThenNativeFullScreen(
     activity: Activity,
@@ -370,107 +372,102 @@ object InterstitialAdHelper {
       val dialog = com.nextgen.ads.dialogs.AdLoadingDialog(activity, loadingMessage)
       dialog.show()
 
-      var interAd: InterstitialAd? = null
+      var interState = ComboInterState.LOADING
       var nativeAd: com.google.android.libraries.ads.mobile.sdk.nativead.NativeAd? = null
-      var interFinished = false
       var nativeFinished = false
-      var hasFailed = false
       var hasCompleted = false
 
-      fun finishWithFailure() {
+      fun isActivityGone() = activity.isFinishing || activity.isDestroyed
+
+      fun complete() {
         if (hasCompleted) return
-        hasFailed = true
         hasCompleted = true
         dialog.dismiss()
         try {
           nativeAd?.destroy()
         } catch (_: Exception) {}
+        nativeAd = null
         onComplete()
       }
 
-      fun checkBothLoaded() {
-        if (hasFailed || hasCompleted) return
-        if (interFinished && nativeFinished) {
-          val readyInter = interAd
-          val readyNative = nativeAd
-          if (readyInter != null && readyNative != null) {
-            hasCompleted = true
-            dialog.dismiss()
+      fun showNativeOrComplete() {
+        if (hasCompleted) return
+        val readyNative = nativeAd
+        if (readyNative == null || isActivityGone()) {
+          complete()
+          return
+        }
+        hasCompleted = true
+        nativeAd = null
+        dialog.dismiss()
+        com.nextgen.ads.nativead.NativeFullScreenActivity.launch(
+          activity = activity,
+          adUnitId = nativeAdUnitId,
+          layoutResId = nativeLayoutResId,
+          nativeAd = readyNative,
+          onDismiss = { onComplete() },
+        )
+      }
 
-            // Step 1: Show Interstitial
-            show(
-              activity = activity,
-              ad = readyInter,
-              callback = object : AdEventListener {
-                override fun onAdDismissed() {
-                  // Step 2: Show Native Fullscreen with the already loaded nativeAd
-                  if (activity.isFinishing || activity.isDestroyed) {
-                    try {
-                      readyNative.destroy()
-                    } catch (_: Exception) {}
-                    onComplete()
-                    return
-                  }
-
-                  com.nextgen.ads.nativead.NativeFullScreenActivity.launch(
-                    activity = activity,
-                    adUnitId = nativeAdUnitId,
-                    layoutResId = nativeLayoutResId,
-                    nativeAd = readyNative,
-                    onDismiss = {
-                      // Step 3: Finished combo
-                      onComplete()
-                    },
-                  )
-                }
-
-                override fun onAdFailedToShow(error: FullScreenContentError) {
-                  NextGenAds.logError("Inter failed to show in combo: ${error.message}")
-                  try {
-                    readyNative.destroy()
-                  } catch (_: Exception) {}
-                  onComplete()
-                }
-              }
-            )
-          } else {
-            finishWithFailure()
-          }
+      fun onInterUnavailable() {
+        interState = ComboInterState.UNAVAILABLE
+        if (nativeFinished) {
+          showNativeOrComplete()
         }
       }
 
       // Load Interstitial
       load(interAdUnitId) { ad, error ->
-        if (hasFailed || hasCompleted) {
+        if (hasCompleted) return@load
+        if (ad == null) {
+          NextGenAds.logError("Combo: Interstitial failed to load (${error?.message})")
+          onInterUnavailable()
           return@load
         }
-        interFinished = true
-        if (ad != null) {
-          interAd = ad
-          checkBothLoaded()
-        } else {
-          NextGenAds.logError("Combo failed: Interstitial failed to load (${error?.message})")
-          finishWithFailure()
+        if (isActivityGone()) {
+          complete()
+          return@load
         }
+
+        interState = ComboInterState.SHOWING
+        dialog.dismiss()
+        show(
+          activity = activity,
+          ad = ad,
+          callback = object : AdEventListener {
+            override fun onAdDismissed() {
+              interState = ComboInterState.CLOSED
+              showNativeOrComplete()
+            }
+
+            override fun onAdFailedToShow(error: FullScreenContentError) {
+              NextGenAds.logError("Combo: Interstitial failed to show (${error.message})")
+              onInterUnavailable()
+            }
+          },
+        )
       }
 
       // Load Native
       com.nextgen.ads.nativead.NativeAdHelper.load(nativeAdUnitId) { ad, error ->
-        if (hasFailed || hasCompleted) {
+        if (hasCompleted) {
           try {
             ad?.destroy()
           } catch (_: Exception) {}
           return@load
         }
         nativeFinished = true
-        if (ad != null) {
-          nativeAd = ad
-          checkBothLoaded()
-        } else {
-          NextGenAds.logError("Combo failed: Native failed to load (${error?.message})")
-          finishWithFailure()
+        nativeAd = ad
+        if (ad == null) {
+          NextGenAds.logError("Combo: Native failed to load (${error?.message})")
+        }
+        // While the interstitial is loading or on screen, the native waits for its dismissal.
+        if (interState == ComboInterState.UNAVAILABLE) {
+          showNativeOrComplete()
         }
       }
     }
   }
+
+  private enum class ComboInterState { LOADING, SHOWING, CLOSED, UNAVAILABLE }
 }

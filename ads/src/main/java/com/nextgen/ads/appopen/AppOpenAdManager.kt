@@ -51,12 +51,21 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
   private var defaultAdUnitId: String? = null
   private var isAutoShowEnabled: Boolean = false
   private var cooldownMs: Long = 20000L // 20s cooldown between auto-shows
-  private var currentActivity: Activity? = null
+  private var isRegistered = false
+  private var isForegroundShowPending = false
+  private var showFailureCount = 0
 
   private val disabledActivityClasses = CopyOnWriteArraySet<Class<out Activity>>()
+  private val pendingLoadCallbacks = mutableListOf<AdEventListener>()
+
+  private const val MAX_SHOW_FAILURES = 2
 
   /**
-   * Initializes the AppOpenAdManager with automatic lifecycle observer.
+   * Initializes the AppOpenAdManager with automatic lifecycle observer and preloads
+   * [defaultAdUnitId] once the SDK is initialized.
+   *
+   * Safe to call from Application or SplashActivity, and safe to call more than once:
+   * later calls only update the configuration. Must be called on the main thread.
    *
    * @param application The Application instance.
    * @param defaultAdUnitId The default AdMob Ad Unit ID for App Open Ads.
@@ -73,8 +82,22 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
     this.isAutoShowEnabled = autoShowOnResume
     this.cooldownMs = cooldownSeconds * 1000L
 
-    application.registerActivityLifecycleCallbacks(this)
-    ProcessLifecycleOwner.get().lifecycle.addObserver(this)
+    if (!isRegistered) {
+      isRegistered = true
+      application.registerActivityLifecycleCallbacks(this)
+      ProcessLifecycleOwner.get().lifecycle.addObserver(this)
+      // addObserver replays onStart when the app is already in foreground (init from Splash);
+      // that is the cold start, not a return to the app, so it must not trigger a show.
+      isForegroundShowPending = false
+    }
+
+    if (!defaultAdUnitId.isNullOrEmpty()) {
+      NextGenAds.whenInitialized {
+        if (NextGenAds.canShowAds) {
+          loadAd(application, defaultAdUnitId)
+        }
+      }
+    }
   }
 
   fun setAutoShowEnabled(enabled: Boolean) {
@@ -128,8 +151,12 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
       return
     }
 
+    synchronized(pendingLoadCallbacks) {
+      callback?.let { pendingLoadCallbacks.add(it) }
+    }
+
     if (isLoadingAd) {
-      NextGenAds.log("App open ad is already loading.")
+      NextGenAds.log("App open ad is already loading. Callback queued.")
       return
     }
 
@@ -144,17 +171,20 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
             appOpenAd = ad
             isLoadingAd = false
             loadTime = Date().time
+            showFailureCount = 0
             NextGenAds.log("App open ad loaded successfully.")
+            val callbacks = drainPendingLoadCallbacks()
             NextGenAds.runOnMainThread {
-              callback?.onAdLoaded()
+              callbacks.forEach { it.onAdLoaded() }
             }
           }
 
           override fun onAdFailedToLoad(adError: LoadAdError) {
             isLoadingAd = false
             NextGenAds.logError("App open ad failed to load: ${adError.message}")
+            val callbacks = drainPendingLoadCallbacks()
             NextGenAds.runOnMainThread {
-              callback?.onAdFailedToLoad(adError)
+              callbacks.forEach { it.onAdFailedToLoad(adError) }
             }
           }
         },
@@ -162,16 +192,23 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
     } catch (e: Exception) {
       isLoadingAd = false
       NextGenAds.logError("Failed to request App Open Ad. Make sure NextGenAds.initialize(...) is called first: ${e.message}", e)
+      val callbacks = drainPendingLoadCallbacks()
       NextGenAds.runOnMainThread {
-        callback?.onAdFailedToLoad(
-          LoadAdError(
-            LoadAdError.ErrorCode.INTERNAL_ERROR,
-            e.message ?: "Exception",
-          ),
+        val error = LoadAdError(
+          LoadAdError.ErrorCode.INTERNAL_ERROR,
+          e.message ?: "Exception",
         )
+        callbacks.forEach { it.onAdFailedToLoad(error) }
       }
     }
   }
+
+  private fun drainPendingLoadCallbacks(): List<AdEventListener> =
+    synchronized(pendingLoadCallbacks) {
+      val list = pendingLoadCallbacks.toList()
+      pendingLoadCallbacks.clear()
+      list
+    }
 
   /**
    * Loads and displays an App Open Ad specifically for SplashActivity with a timeout fallback.
@@ -307,14 +344,22 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
 
         override fun onAdFailedToShowFullScreenContent(fullScreenContentError: FullScreenContentError) {
           NextGenAds.logError("App open ad failed to show: ${fullScreenContentError.message}")
-          appOpenAd = null
           isShowingAd = false
           NextGenAds.isFullScreenAdShowing = false
+          showFailureCount++
+          // A matched ad is kept for the next foreground, unless it keeps failing.
+          val shouldDiscard = showFailureCount >= MAX_SHOW_FAILURES
+          if (shouldDiscard) {
+            appOpenAd = null
+            showFailureCount = 0
+          }
           NextGenAds.runOnMainThread {
             callback?.onAdFailedToShow(fullScreenContentError)
             onCompleteListener?.onShowAdComplete()
           }
-          defaultAdUnitId?.let { loadAd(activity, it) }
+          if (shouldDiscard) {
+            defaultAdUnitId?.let { loadAd(activity, it) }
+          }
         }
 
         override fun onAdImpression() {
@@ -341,9 +386,25 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
   }
 
   // Lifecycle Callbacks
+
+  // Process onStart fires before the activity is resumed, when showing tends to fail with
+  // "app not in foreground". Only mark the foreground here and show in onActivityResumed.
   override fun onStart(owner: LifecycleOwner) {
-    if (!isAutoShowEnabled || isShowingAd || NextGenAds.isFullScreenAdShowing) {
+    isForegroundShowPending = isAutoShowEnabled
+  }
+
+  override fun onStop(owner: LifecycleOwner) {
+    isForegroundShowPending = false
+  }
+
+  private fun showOnForeground(activity: Activity) {
+    if (isShowingAd || NextGenAds.isFullScreenAdShowing) {
       NextGenAds.log("Skipping App Open Ad on resume: already showing full screen ad.")
+      return
+    }
+
+    if (disabledActivityClasses.contains(activity.javaClass)) {
+      NextGenAds.log("Skipping App Open Ad on disabled activity: ${activity.javaClass.simpleName}")
       return
     }
 
@@ -353,27 +414,27 @@ object AppOpenAdManager : Application.ActivityLifecycleCallbacks, DefaultLifecyc
       return
     }
 
-    val activity = currentActivity ?: return
-    if (disabledActivityClasses.contains(activity.javaClass)) {
-      NextGenAds.log("Skipping App Open Ad on disabled activity: ${activity.javaClass.simpleName}")
-      return
-    }
+    if (!NextGenAds.canShowAds(activity)) return
 
     showAdIfAvailable(activity)
   }
 
-  override fun onActivityStarted(activity: Activity) {
-    currentActivity = activity
+  private fun isAdActivity(activity: Activity): Boolean =
+    activity.javaClass.name.startsWith("com.google.android.")
+
+  override fun onActivityStarted(activity: Activity) {}
+  override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+
+  override fun onActivityResumed(activity: Activity) {
+    if (isAdActivity(activity)) return
+    if (isForegroundShowPending) {
+      isForegroundShowPending = false
+      showOnForeground(activity)
+    }
   }
 
-  override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
-  override fun onActivityResumed(activity: Activity) {}
   override fun onActivityPaused(activity: Activity) {}
   override fun onActivityStopped(activity: Activity) {}
   override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
-  override fun onActivityDestroyed(activity: Activity) {
-    if (currentActivity == activity) {
-      currentActivity = null
-    }
-  }
+  override fun onActivityDestroyed(activity: Activity) {}
 }
